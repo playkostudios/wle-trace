@@ -6,7 +6,7 @@
   "exports": "./dist/index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc src/index.ts --outfile dist/index.js"
+    "build": "tsc"
   },
   "repository": {
     "type": "git",

@@ -111,7 +111,7 @@ export function guardReclaimObject3D(obj: TracedObject3D) {
             }
 
             if (unexpectedProperties.length > 0) {
-                const message = StyledMessage.fromComponent(obj)
+                const message = StyledMessage.fromObject3D(obj)
                     .add(` (ID ${obj._objectId}) was badly reclaimed from a previously destroyed object at `)
                     .addSubMessage(prevPath)
                     .add(`; the following old ${unexpectedProperties.length > 1 ? 'properties were' : 'property was'} still present: `);

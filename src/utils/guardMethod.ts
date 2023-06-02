@@ -9,8 +9,8 @@ import { type TracedObject3D } from '../types/TracedObject3D.js';
 controller.registerFeature('guard:methods');
 
 function originFactory(isObject: boolean, objOrComp: TracedComponent | TracedObject3D, methodName: string, idx: number) {
-    const factoryName = isObject ? 'fromObject3D' : 'fromComponent';
-    return StyledMessage[factoryName](objOrComp).add(`::${methodName}(...)::args[${idx}] - `);
+    const message = isObject ? StyledMessage.fromObject3D(objOrComp as TracedObject3D) : StyledMessage.fromComponent(objOrComp as TracedComponent);
+    return message.add(`::${methodName}(...)::args[${idx}] - `);
 }
 
 function guardMethod(isObject: boolean, objOrComp: TracedComponent | TracedObject3D, methodName: string, args: any[], strict: boolean) {

@@ -35,7 +35,7 @@ export function guardComponent(component: TracedComponent, strict: boolean, orig
         const style = strict ? ERR : WARN;
         message.print(true, style);
 
-        triggerGuardBreakpoint(style);
+        triggerGuardBreakpoint(true);
     }
 
     const obj = origObjectGetter.apply(component);
