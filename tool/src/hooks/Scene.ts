@@ -17,7 +17,7 @@ injectMethod(Scene.prototype, 'addObjects', {
     }
 });
 
-injectMethod(Scene.prototype, 'addObject', {
+injectMethod(Scene.prototype, 'append', {
     afterHook: (_obj: TracedObject3D, _methodName: string, _args: any[], resultPromise: Promise<TracedObject3D | null | { root: TracedObject3D }>) => {
         return new Promise((resolve, reject) => {
             resultPromise.then((result) => {

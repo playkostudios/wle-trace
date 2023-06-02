@@ -11,9 +11,20 @@
  *     - `wle:auto-benchmark:start` and `wle:auto-benchmark:end`: Append the benchmarking code
  */
 
+import wleTrace from 'wle-trace';
+wleTrace.enableWithPrefix('guard:');
+wleTrace.enableWithPrefix('trace:destruction:');
+wleTrace.enableWithPrefix('trace:reclaim:')
+wleTrace.enable('breakpoint:guard-failed');
+wleTrace.enable('breakpoint:strict-guard-only');
+wleTrace.enable('fast-trace');
+wleTrace.enable('fast-objects');
+// wleTrace.enable('destruction-traces');
+
 /* wle:auto-imports:start */
 import {MouseLookComponent} from '@wonderlandengine/components';
 import {WasdControlsComponent} from '@wonderlandengine/components';
+import {TestDestroy} from './test-destroy.js';
 /* wle:auto-imports:end */
 
 import {loadRuntime} from '@wonderlandengine/api';
@@ -74,6 +85,7 @@ if (document.readyState === 'loading') {
 /* wle:auto-register:start */
 engine.registerComponent(MouseLookComponent);
 engine.registerComponent(WasdControlsComponent);
+engine.registerComponent(TestDestroy);
 /* wle:auto-register:end */
 
 engine.scene.load(`${Constants.ProjectName}.bin`);

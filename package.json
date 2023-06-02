@@ -1,41 +1,11 @@
 {
-  "name": "wle-trace",
-  "version": "0.1.0",
-  "description": "Debugging tool for Wonderland Engine",
-  "main": "dist/index.js",
-  "exports": "./dist/index.js",
-  "type": "module",
-  "scripts": {
-    "build": "tsc"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/playkostudios/wle-trace.git"
-  },
-  "keywords": [
-    "wonderland-engine"
-  ],
-  "contributors": [
-    {
-      "name": "Playko",
-      "url": "https://www.playko.com/"
-    },
-    {
-      "name": "rafern",
-      "email": "rafael@playko.com"
-    }
-  ],
+  "name": "wle-trace-workspace",
+  "version": "1.0.0",
+  "description": "Workspace for wle-trace package and test project",
   "license": "UNLICENSED",
   "private": true,
-  "bugs": {
-    "url": "https://github.com/playkostudios/wle-trace/issues"
-  },
-  "homepage": "https://github.com/playkostudios/wle-trace#readme",
-  "devDependencies": {
-    "@wonderlandengine/api": "^1.0.0",
-    "typescript": "^5.1.3"
-  },
-  "peerDependencies": {
-    "@wonderlandengine/api": "^1.0.0"
-  }
+  "workspaces": [
+    "tool",
+    "test-project"
+  ]
 }

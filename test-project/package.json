@@ -14,7 +14,9 @@
   "dependencies": {
     "@wonderlandengine/api": "^1.0.0",
     "@wonderlandengine/components": "^1.0.3",
-    "gl-matrix": "^3.4.3",
-    "wle-trace": "file:.."
+    "gl-matrix": "^3.4.3"
+  },
+  "devDependencies": {
+    "wle-trace": "file:../tool"
   }
 }

@@ -67,18 +67,18 @@ injectAccessor(Component.prototype, 'active', {
 });
 
 // getters
-injectAccessor(Component.prototype, 'engine', {
-    traceHook: controller.guardFunction('trace:get:Component.engine', traceComponentProperty),
-    beforeHook: strictGuardComponent,
-});
+// injectAccessor(Component.prototype, 'engine', {
+//     traceHook: controller.guardFunction('trace:get:Component.engine', traceComponentProperty),
+//     beforeHook: strictGuardComponent,
+// });
 injectAccessor(Component.prototype, 'object', {
     traceHook: controller.guardFunction('trace:get:Component.object', traceComponentProperty),
     beforeHook: strictGuardComponent,
 });
-injectAccessor(Component.prototype, 'type', {
-    traceHook: controller.guardFunction('trace:get:Component.type', traceComponentProperty),
-    beforeHook: strictGuardComponent,
-});
+// injectAccessor(Component.prototype, 'type', {
+//     traceHook: controller.guardFunction('trace:get:Component.type', traceComponentProperty),
+//     beforeHook: strictGuardComponent,
+// });
 
 // methods
 injectMethod(Component.prototype, 'destroy', {

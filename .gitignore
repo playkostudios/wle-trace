@@ -3,8 +3,10 @@
 /test-project/.editor/
 /test-project/deploy/
 /test-project/cache/
+/tool/package-lock.json
+/tool/node_modules/
+/tool/dist/
 /package-lock.json
 /node_modules/
-/dist/
 /*.sublime-project
 /*.sublime-workspace

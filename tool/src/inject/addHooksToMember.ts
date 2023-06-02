@@ -58,7 +58,7 @@ export function addHooksToMember(func: Function, memberName: string, options: Ho
             extraArgs.push(beforeHook);
         }
         if (traceHook) {
-            newBody.push(`th(this,'${memberName}',a)`);
+            newBody.push(`th(this,'${memberName}',a);`);
             extraParams.push('th');
             extraArgs.push(traceHook);
         }
@@ -79,14 +79,14 @@ export function addHooksToMember(func: Function, memberName: string, options: Ho
             newBody.push('r=');
         }
 
-        newBody.push(`ah(this,'${memberName}',a,r)`);
+        newBody.push(`ah(this,'${memberName}',a,r);`);
 
         if (safeHooks) {
             newBody.push('}catch(e){eh(e)}');
         }
 
         if (returnMode !== ReturnMode.None) {
-            newBody.push(';return r')
+            newBody.push('return r')
         }
 
         extraParams.push('ah');
