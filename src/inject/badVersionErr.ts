@@ -1,0 +1,1 @@
+export const badVersionErr = 'Are you using an incompatible @wonderlandengine/api version?';

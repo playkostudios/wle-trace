@@ -1,0 +1,8 @@
+/test-project/package-lock.json
+/test-project/node_modules/
+/test-project/.editor/
+/test-project/deploy/
+/test-project/cache/
+/package-lock.json
+/node_modules/
+/dist/
