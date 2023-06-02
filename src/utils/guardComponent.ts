@@ -1,13 +1,14 @@
-import { origObjectGetter } from './orig-properties.js';
-import { ERR, StyledMessage } from './StyledMessage.js';
-import { controller } from './WLETraceController.js';
+import { origObjectGetter } from '../hooks/orig-properties.js';
+import { ERR, StyledMessage, WARN } from '../StyledMessage.js';
+import { controller } from '../WLETraceController.js';
 import { guardObject } from './guardObject.js';
 import { triggerGuardBreakpoint } from './triggerGuardBreakpoint.js';
 import { addDestructionTrace } from './addDestructionTrace.js';
+import { type TracedComponent } from '../types/TracedComponent.js';
 
 controller.registerFeature('guard:Component');
 
-export function guardComponent(component, strict, originFactory = null) {
+export function guardComponent(component: TracedComponent, strict: boolean, originFactory: ((component: TracedComponent) => StyledMessage) | null = null) {
     if (!controller.isEnabled('guard:Component')) {
         return;
     }
@@ -31,9 +32,10 @@ export function guardComponent(component, strict, originFactory = null) {
 
         addDestructionTrace(message, component.__wle_trace_destroyed_data[1]);
 
+        const style = strict ? ERR : WARN;
         message.print(true, style);
 
-        triggerGuardBreakpoint(strict ? ERR : WARN);
+        triggerGuardBreakpoint(style);
     }
 
     const obj = origObjectGetter.apply(component);
@@ -47,10 +49,10 @@ export function guardComponent(component, strict, originFactory = null) {
     }
 }
 
-export function strictGuardComponent(component) {
+export function strictGuardComponent(component: TracedComponent) {
     guardComponent(component, true);
 }
 
-export function softGuardComponent(component) {
+export function softGuardComponent(component: TracedComponent) {
     guardComponent(component, false);
 }

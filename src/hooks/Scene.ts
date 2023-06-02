@@ -1,33 +1,41 @@
 import { Object3D, Scene } from '@wonderlandengine/api';
-import { injectMethod } from './inject.js';
-import { guardReclaimObject3D, guardReclaimObject3DRecursively } from './guardReclaim.js';
+import { injectMethod } from '../inject/injectMethod.js';
+import { guardReclaimObject3D, guardReclaimObject3DRecursively } from '../utils/guardReclaim.js';
+import { type TracedObject3D } from '../types/TracedObject3D.js';
 
-injectMethod(Scene.prototype, 'addObject', null, null, (_obj, _methodName, _args, newObj) => {
-    guardReclaimObject3D(newObj);
-});
-
-injectMethod(Scene.prototype, 'addObjects', null, null, (_obj, _methodName, _args, newObjs) => {
-    for (const newObj of newObjs) {
+injectMethod(Scene.prototype, 'addObject', {
+    afterHook: (_obj: TracedObject3D, _methodName: string, _args: any[], newObj: TracedObject3D) => {
         guardReclaimObject3D(newObj);
     }
 });
 
-injectMethod(Scene.prototype, 'append', null, null, (_obj, _methodName, _args, resultPromise) => {
-    return new Promise((resolve, reject) => {
-        resultPromise.then((result) => {
-            try {
-                if (result !== null) {
-                    if (result instanceof Object3D) {
-                        guardReclaimObject3DRecursively(result);
-                    } else {
-                        guardReclaimObject3DRecursively(result.root);
-                    }
-                }
-            } catch(err) {
-                console.error('[wle-trace] unhandled exception in reclaim logic of Scene.append after hook:', err);
-            }
+injectMethod(Scene.prototype, 'addObjects', {
+    afterHook: (_obj: TracedObject3D, _methodName: string, _args: any[], newObjs: TracedObject3D[]) => {
+        for (const newObj of newObjs) {
+            guardReclaimObject3D(newObj);
+        }
+    }
+});
 
-            resolve(result);
-        }).catch(reject);
-    })
-}, null, true);
+injectMethod(Scene.prototype, 'addObject', {
+    afterHook: (_obj: TracedObject3D, _methodName: string, _args: any[], resultPromise: Promise<TracedObject3D | null | { root: TracedObject3D }>) => {
+        return new Promise((resolve, reject) => {
+            resultPromise.then((result) => {
+                try {
+                    if (result !== null) {
+                        if (result instanceof Object3D) {
+                            guardReclaimObject3DRecursively(result as TracedObject3D);
+                        } else {
+                            guardReclaimObject3DRecursively((result as { root: TracedObject3D }).root);
+                        }
+                    }
+                } catch(err) {
+                    console.error('[wle-trace] unhandled exception in reclaim logic of Scene.append after hook:', err);
+                }
+
+                resolve(result);
+            }).catch(reject);
+        });
+    },
+    safeHooks: false,
+});

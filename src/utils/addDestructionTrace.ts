@@ -1,5 +1,5 @@
-import { controller } from './WLETraceController.js';
-import type { StyledMessage } from './StyledMessage.js';
+import { controller } from '../WLETraceController.js';
+import { type StyledMessage } from '../StyledMessage.js';
 
 export function addDestructionTrace(message: StyledMessage, trace: string | null) {
     if (!controller.isEnabled('destruction-traces')) {

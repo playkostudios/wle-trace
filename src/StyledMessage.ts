@@ -1,6 +1,8 @@
-import { Component, Object3D } from '@wonderlandengine/api';
-import { origChildrenGetter, origGetComponentsMethod, origNameGetter, origParentGetter, origObjectGetter, origTypeGetter } from './orig-properties.js';
+import { Component, Object3D, type WonderlandEngine } from '@wonderlandengine/api';
+import { origChildrenGetter, origGetComponentsMethod, origNameGetter, origParentGetter, origObjectGetter, origTypeGetter } from './hooks/orig-properties.js';
 import { controller } from './WLETraceController.js';
+import { type TracedObject3D } from './types/TracedObject3D.js';
+import { type TracedComponent } from './types/TracedComponent.js';
 
 export const DEFAULT = -1;
 export const NONE = 0;
@@ -22,7 +24,7 @@ const LOG_LEVEL_TAGS = [
 ];
 
 const rootObjs = new WeakMap();
-function getRootObj(engine) {
+function getRootObj(engine: WonderlandEngine) {
     let rootObj = rootObjs.get(engine);
     if (!rootObj) {
         rootObj = engine.wrapObject(0);
@@ -32,7 +34,7 @@ function getRootObj(engine) {
     return rootObj;
 }
 
-function isFunction(funcOrClass) {
+function isFunction(funcOrClass: Function) {
     const propertyNames = Object.getOwnPropertyNames(funcOrClass);
     return (!propertyNames.includes('prototype') || propertyNames.includes('arguments'));
 }
@@ -41,11 +43,9 @@ controller.registerFeature('fast-trace');
 controller.registerFeature('fast-objects');
 
 export class StyledMessage {
-    constructor() {
-        this.parts = [];
-    }
+    parts: (string | number)[] = [];
 
-    static fromObject3D(obj) {
+    static fromObject3D(obj: TracedObject3D) {
         const message = new StyledMessage();
 
         // XXX special case for root object
@@ -140,7 +140,7 @@ export class StyledMessage {
 
                     let childName;
                     try {
-                        childName = origNameGetter(child);
+                        childName = origNameGetter.apply(child);
                     } catch (_) {
                         // TODO should this be reported when it happens?
                         continue;
@@ -167,7 +167,7 @@ export class StyledMessage {
         return message;
     }
 
-    static fromComponent(component) {
+    static fromComponent(component: TracedComponent) {
         let obj = null;
 
         if (component._object) {
@@ -190,7 +190,7 @@ export class StyledMessage {
         //      component is destroyed as a side-effect of an object destroy,
         //      then _id will not be set to -1
         if (component._id === -1) {
-            const compType = component.constructor?.TypeName ?? null;
+            const compType = (component.constructor as { TypeName?: string }).TypeName ?? null;
 
             if (compType) {
                 message.add(compType, STR);
@@ -225,7 +225,7 @@ export class StyledMessage {
         return message;
     }
 
-    static fromValue(value) {
+    static fromValue(value: unknown) {
         const message = new StyledMessage();
 
         if (value === null) {
@@ -233,8 +233,7 @@ export class StyledMessage {
             return message;
         }
 
-        const typeName = typeof value;
-        switch (typeName) {
+        switch (typeof value) {
         case 'undefined':
             message.add('undefined');
             break;
@@ -301,38 +300,42 @@ export class StyledMessage {
 
                         message.add(name, STR);
 
-                        const hasGet = descriptor.get !== undefined;
-                        const hasSet = descriptor.set !== undefined;
-                        if (hasGet && hasSet) {
-                            // accessor with both getter and setter
-                            message.add(' <getter/setter>');
-                        } else if (hasGet) {
-                            // accessor with only getter
-                            message.add(' <getter>');
-                        } else if (hasSet) {
-                            // accessor with only setter
-                            message.add(' <setter>');
-                        } else {
-                            const subValue = descriptor.value;
-                            if (isFunction(subValue)) {
-                                // method (or function, but no difference)
-                                message.add('()');
+                        if (descriptor) {
+                            const hasGet = descriptor.get !== undefined;
+                            const hasSet = descriptor.set !== undefined;
+                            if (hasGet && hasSet) {
+                                // accessor with both getter and setter
+                                message.add(' <getter/setter>');
+                            } else if (hasGet) {
+                                // accessor with only getter
+                                message.add(' <getter>');
+                            } else if (hasSet) {
+                                // accessor with only setter
+                                message.add(' <setter>');
                             } else {
-                                // value
-                                message.add(': ');
-                                message.addSubMessage(StyledMessage.fromValue(subValue));
+                                const subValue = descriptor.value;
+                                if (isFunction(subValue)) {
+                                    // method (or function, but no difference)
+                                    message.add('()');
+                                } else {
+                                    // value
+                                    message.add(': ');
+                                    message.addSubMessage(StyledMessage.fromValue(subValue));
+                                }
                             }
+                        } else {
+                            message.add(' <unknown>', ERR);
                         }
                     }
 
                     message.add('}');
                 } else if (value instanceof Object3D) {
                     message.add('Object3D{');
-                    message.addSubMessage(StyledMessage.fromObject3D(value));
+                    message.addSubMessage(StyledMessage.fromObject3D(value as unknown as TracedObject3D));
                     message.add('}');
                 } else if (value instanceof Component) {
                     message.add('Component{');
-                    message.addSubMessage(StyledMessage.fromComponent(value));
+                    message.addSubMessage(StyledMessage.fromComponent(value as unknown as TracedComponent));
                     message.add('}');
                 } else {
                     message.add('Instance{');
@@ -346,22 +349,22 @@ export class StyledMessage {
         return message;
     }
 
-    unshift(string, style = DEFAULT) {
+    unshift(string: string, style: number = DEFAULT) {
         this.parts.unshift(string, style);
         return this;
     }
 
-    unshiftSubMessage(message) {
+    unshiftSubMessage(message: StyledMessage) {
         this.parts.unshift(...message.parts);
         return this;
     }
 
-    add(string, style = DEFAULT) {
+    add(string: string, style: number = DEFAULT) {
         this.parts.push(string, style);
         return this;
     }
 
-    addSubMessage(message) {
+    addSubMessage(message: StyledMessage) {
         this.parts.push(...message.parts);
         return this;
     }
@@ -378,7 +381,7 @@ export class StyledMessage {
         return this;
     }
 
-    resolveStyle(style, defaultStyle) {
+    resolveStyle(style: number, defaultStyle: number) {
         if (style === DEFAULT) {
             return defaultStyle;
         } else {
@@ -386,14 +389,14 @@ export class StyledMessage {
         }
     }
 
-    print(trace = false, logLevel = NONE, prefix = 'wle-trace') {
-        const formatParts = [];
-        const argumentParts = [];
+    print(trace = false, logLevel: number = NONE, prefix = 'wle-trace') {
+        const formatParts: string[] = [];
+        const argumentParts: (string | number)[] = [];
         const iMax = this.parts.length;
 
         for (let i = 0; i < iMax; i += 2) {
             formatParts.push('%c%s');
-            argumentParts.push(STYLES[this.resolveStyle(this.parts[i + 1], logLevel)], this.parts[i]);
+            argumentParts.push(STYLES[this.resolveStyle(this.parts[i + 1] as number, logLevel)], this.parts[i] as string);
         }
 
         formatParts.unshift(`%c[${prefix}${LOG_LEVEL_TAGS[logLevel]}] `);

@@ -1,11 +1,12 @@
-import { ERR, StyledMessage, WARN } from './StyledMessage.js';
-import { controller } from './WLETraceController.js';
+import { type TracedObject3D } from '../types/TracedObject3D.js';
+import { ERR, StyledMessage, WARN } from '../StyledMessage.js';
+import { controller } from '../WLETraceController.js';
 import { addDestructionTrace } from './addDestructionTrace.js';
 import { triggerGuardBreakpoint } from './triggerGuardBreakpoint.js';
 
 controller.registerFeature('guard:Object3D');
 
-export function guardObject(obj, strict, originFactory = null) {
+export function guardObject(obj: TracedObject3D, strict: boolean, originFactory: ((component: TracedObject3D) => StyledMessage) | null = null) {
     if (!controller.isEnabled('guard:Object3D')) {
         return;
     }
@@ -19,21 +20,20 @@ export function guardObject(obj, strict, originFactory = null) {
         } else if (obj.__wle_trace_destroyed_data) {
             [path, destroyTrace] = obj.__wle_trace_destroyed_data;
         } else {
-            message = new StyledMessage()
-                .add('use-after-destroy detected in unexpected destroyed object');
-            message.print(true, ERR);
+            new StyledMessage()
+                .add('use-after-destroy detected in unexpected destroyed object')
+                .print(true, ERR);
 
             triggerGuardBreakpoint(strict);
 
             return;
         }
 
-        let message;
         if (obj._objectId !== -1) {
-            message = new StyledMessage()
+            new StyledMessage()
                 .add('unexpected reclaim; was destroyed object ')
-                .addSubMessage(path);
-            message.print(true, WARN);
+                .addSubMessage(path)
+                .print(true, WARN);
 
             if (obj.__wle_trace_destroyed_data) {
                 delete obj.__wle_trace_destroyed_data;
@@ -46,11 +46,11 @@ export function guardObject(obj, strict, originFactory = null) {
             return;
         }
 
+        let message;
         if (originFactory === null) {
             message = path.clone();
         } else {
-            message = originFactory(obj);
-            message.addSubMessage(path);
+            message = originFactory(obj).addSubMessage(path);
         }
 
         const style = strict ? ERR : WARN;
@@ -75,10 +75,10 @@ export function guardObject(obj, strict, originFactory = null) {
     }
 }
 
-export function strictGuardObject(obj) {
+export function strictGuardObject(obj: TracedObject3D) {
     guardObject(obj, true);
 }
 
-export function softGuardObject(obj) {
+export function softGuardObject(obj: TracedObject3D) {
     guardObject(obj, false);
 }

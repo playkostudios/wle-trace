@@ -1,9 +1,9 @@
-import { controller } from './WLETraceController.js';
+import { controller } from '../WLETraceController.js';
 import { triggerBreakpoint } from './triggerBreakpoint.js';
 
 controller.registerFeature('breakpoint:strict-guard-only');
 
-export function triggerGuardBreakpoint(isError) {
+export function triggerGuardBreakpoint(isError: boolean) {
     if (isError || !controller.isEnabled('breakpoint:strict-guard-only')) {
         triggerBreakpoint('guard-failed');
     }

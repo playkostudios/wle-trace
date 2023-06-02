@@ -1,14 +1,15 @@
 import { Component } from '@wonderlandengine/api';
-import { ERR, StyledMessage } from './StyledMessage.js';
-import { controller } from './WLETraceController.js';
-import { getDestructionTrace } from './getDestructionTrace.js';
-import { strictGuardComponent } from './guardComponent.js';
-import { guardComponentSetter } from './guardSetter.js';
-import { injectAccessor, injectMethod } from './inject.js';
-import { traceComponentMethod, traceComponentProperty, traceComponentSet } from './trace.js';
-import { triggerBreakpoint } from './triggerBreakpoint.js';
-import { triggerGuardBreakpoint } from './triggerGuardBreakpoint.js';
-import type { TracedComponent } from '../types/TracedComponent.js';
+import { ERR, StyledMessage } from '../StyledMessage.js';
+import { controller } from '../WLETraceController.js';
+import { injectAccessor } from '../inject/injectAccessor.js';
+import { injectMethod } from '../inject/injectMethod.js';
+import { type TracedComponent } from '../types/TracedComponent.js';
+import { getDestructionTrace } from '../utils/getDestructionTrace.js';
+import { strictGuardComponent } from '../utils/guardComponent.js';
+import { guardComponentSetter } from '../utils/guardSetter.js';
+import { traceComponentMethod, traceComponentProperty, traceComponentSet } from '../utils/trace.js';
+import { triggerBreakpoint } from '../utils/triggerBreakpoint.js';
+import { triggerGuardBreakpoint } from '../utils/triggerGuardBreakpoint.js';
 
 controller.registerFeature('trace:destruction:Component');
 controller.registerFeature('destruction:Component');
@@ -57,20 +58,40 @@ export function componentDestroyMark(comp: TracedComponent) {
 }
 
 // accessors
-injectAccessor(Component.prototype, 'active', traceComponentProperty, traceComponentSet, strictGuardComponent, guardComponentSetter, 'trace:get:Component.active', 'trace:set:Component.active');
+injectAccessor(Component.prototype, 'active', {
+    traceHook: controller.guardFunction('trace:get:Component.active', traceComponentProperty),
+    beforeHook: strictGuardComponent,
+}, {
+    traceHook: controller.guardFunction('trace:set:Component.active', traceComponentSet),
+    beforeHook: guardComponentSetter,
+});
 
 // getters
-injectAccessor(Component.prototype, 'engine', traceComponentProperty, null, strictGuardComponent, null, 'trace:get:Component.engine', null);
-injectAccessor(Component.prototype, 'object', traceComponentProperty, null, strictGuardComponent, null, 'trace:get:Component.object', null);
-injectAccessor(Component.prototype, 'type', traceComponentProperty, null, strictGuardComponent, null, 'trace:get:Component.type', null);
+injectAccessor(Component.prototype, 'engine', {
+    traceHook: controller.guardFunction('trace:get:Component.engine', traceComponentProperty),
+    beforeHook: strictGuardComponent,
+});
+injectAccessor(Component.prototype, 'object', {
+    traceHook: controller.guardFunction('trace:get:Component.object', traceComponentProperty),
+    beforeHook: strictGuardComponent,
+});
+injectAccessor(Component.prototype, 'type', {
+    traceHook: controller.guardFunction('trace:get:Component.type', traceComponentProperty),
+    beforeHook: strictGuardComponent,
+});
 
 // methods
-injectMethod(Component.prototype, 'destroy', traceComponentMethod, (comp: TracedComponent, _methodName: string) => {
-    componentDestroyCheck(comp);
-}, (comp: TracedComponent, _methodName: string) => {
-    componentDestroyMark(comp);
-}, 'trace:Component.destroy');
+injectMethod(Component.prototype, 'destroy', {
+    traceHook: controller.guardFunction('trace:Component.destroy', traceComponentMethod),
+    beforeHook: (comp: TracedComponent, _methodName: string) => {
+        componentDestroyCheck(comp);
+    },
+    afterHook: (comp: TracedComponent, _methodName: string) => {
+        componentDestroyMark(comp);
+    }
+});
 
 // TODO figure out how to detect calls to onActivate, onDeactivate, onDestroy,
 //      start, init and update, and guard them. can't use prototype injection
 //      because these methods are user-overridden, and users never call super
+// XXX can inject into _wljs_* functions

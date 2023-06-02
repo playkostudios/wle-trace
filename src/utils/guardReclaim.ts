@@ -1,6 +1,8 @@
-import { STR, StyledMessage, WARN } from './StyledMessage.js';
-import { controller } from './WLETraceController.js';
-import { origChildrenGetter, origGetComponentsMethod } from './orig-properties.js';
+import { STR, StyledMessage, WARN } from '../StyledMessage.js';
+import { controller } from '../WLETraceController.js';
+import { origChildrenGetter, origGetComponentsMethod } from '../hooks/orig-properties.js';
+import { type TracedComponent } from '../types/TracedComponent.js';
+import { type TracedObject3D } from '../types/TracedObject3D.js';
 import { triggerGuardBreakpoint } from './triggerGuardBreakpoint.js';
 
 controller.registerFeature('trace:reclaim:Object3D');
@@ -8,13 +10,13 @@ controller.registerFeature('trace:reclaim:Component');
 controller.registerFeature('guard:bad-reclaim:Object3D');
 controller.registerFeature('guard:bad-reclaim:Component');
 
-export function guardReclaimComponent(comp) {
+export function guardReclaimComponent(comp: TracedComponent) {
     let prevPath = null;
 
-    if ('__wle_trace_destroyed_data' in comp) {
+    if (comp.__wle_trace_destroyed_data) {
         prevPath = comp.__wle_trace_destroyed_data[0];
         delete comp.__wle_trace_destroyed_data;
-    } else if ('__wle_trace_destroying_data' in comp) {
+    } else if (comp.__wle_trace_destroying_data) {
         prevPath = comp.__wle_trace_destroying_data[0];
 
         const message = new StyledMessage();
@@ -70,30 +72,30 @@ export function guardReclaimComponent(comp) {
     }
 }
 
-export function guardReclaimObject3D(obj) {
+export function guardReclaimObject3D(obj: TracedObject3D) {
     let prevPath = null;
 
-    if ('__wle_trace_destroyed_data' in obj) {
+    if (obj.__wle_trace_destroyed_data) {
         prevPath = obj.__wle_trace_destroyed_data[0];
         delete obj.__wle_trace_destroyed_data;
-    } else if ('__wle_trace_destroying_data' in obj) {
+    } else if (obj.__wle_trace_destroying_data) {
         prevPath = obj.__wle_trace_destroying_data[0];
 
-        const message = new StyledMessage();
-        message.add('Object3D at path ', WARN);
-        message.addSubMessage(prevPath);
-        message.add(` (ID ${obj._objectId}) was reclaimed while it was being destroyed`);
-        message.print(true, WARN);
+        new StyledMessage()
+            .add('Object3D at path ', WARN)
+            .addSubMessage(prevPath)
+            .add(` (ID ${obj._objectId}) was reclaimed while it was being destroyed`)
+            .print(true, WARN);
 
         delete obj.__wle_trace_destroying_data;
     }
 
     if (prevPath) {
         if (controller.isEnabled('trace:reclaim:Object3D')) {
-            const message = StyledMessage.fromObject3D(obj);
-            message.add(` (ID ${obj.objectId}) was reclaimed from a previously destroyed object at `);
-            message.addSubMessage(prevPath);
-            message.print(true);
+            StyledMessage.fromObject3D(obj)
+                .add(` (ID ${obj._objectId}) was reclaimed from a previously destroyed object at `)
+                .addSubMessage(prevPath)
+                .print(true);
         }
 
         if (controller.isEnabled('guard:bad-reclaim:Object3D')) {
@@ -109,10 +111,10 @@ export function guardReclaimObject3D(obj) {
             }
 
             if (unexpectedProperties.length > 0) {
-                const message = StyledMessage.fromComponent(obj);
-                message.add(` (ID ${obj.objectId}) was badly reclaimed from a previously destroyed object at `);
-                message.addSubMessage(prevPath);
-                message.add(`; the following old ${unexpectedProperties.length > 1 ? 'properties were' : 'property was'} still present: `);
+                const message = StyledMessage.fromComponent(obj)
+                    .add(` (ID ${obj._objectId}) was badly reclaimed from a previously destroyed object at `)
+                    .addSubMessage(prevPath)
+                    .add(`; the following old ${unexpectedProperties.length > 1 ? 'properties were' : 'property was'} still present: `);
 
                 let notFirst = false;
                 for (const unexpectedProperty of unexpectedProperties) {
@@ -132,7 +134,7 @@ export function guardReclaimObject3D(obj) {
     }
 }
 
-export function guardReclaimObject3DRecursively(obj) {
+export function guardReclaimObject3DRecursively(obj: TracedObject3D) {
     guardReclaimObject3D(obj);
 
     for (const comp of origGetComponentsMethod.apply(obj)) {

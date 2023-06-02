@@ -5,8 +5,8 @@ import './Object3D.js';
 import './Component.js';
 import './MeshComponent.js';
 import './Scene.js';
-import { controller } from './types/WLETraceController.js';
-import type { WLETraceController } from './types/WLETraceController.js';
+import { controller } from './WLETraceController.js';
+import type { WLETraceController } from './WLETraceController.js';
 
 declare global {
     var wleTrace: WLETraceController;

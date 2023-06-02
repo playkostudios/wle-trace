@@ -1,6 +1,6 @@
 function getStackTraceChromium() {
-    const traceObj = {};
-    Error.captureStackTrace(traceObj);
+    const traceObj = { stack: '' };
+    (Error as unknown as { captureStackTrace(obj: object): void }).captureStackTrace(traceObj);
     return traceObj.stack;
 }
 
@@ -8,7 +8,7 @@ function getStackTraceGeneric() {
     try {
         throw new Error();
     } catch (err) {
-        return err.stack ?? '';
+        return (err as Error).stack ?? '';
     }
 }
 

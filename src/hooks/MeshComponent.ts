@@ -1,7 +1,14 @@
 import { MeshComponent } from '@wonderlandengine/api';
-import { strictGuardComponent } from './guardComponent.js';
-import { traceComponentProperty, traceComponentSet } from './trace.js';
-import { injectAccessor } from './inject.js';
-import { guardComponentSetter } from './guardSetter.js';
+import { injectAccessor } from '../inject/injectAccessor.js';
+import { strictGuardComponent } from '../utils/guardComponent.js';
+import { guardComponentSetter } from '../utils/guardSetter.js';
+import { traceComponentProperty, traceComponentSet } from '../utils/trace.js';
+import { controller } from '../WLETraceController.js';
 
-injectAccessor(MeshComponent.prototype, 'material', traceComponentProperty, traceComponentSet, strictGuardComponent, guardComponentSetter, 'trace:get:MeshComponent.material', 'trace:set:MeshComponent.material');
+injectAccessor(MeshComponent.prototype, 'material', {
+    traceHook: controller.guardFunction('trace:get:MeshComponent.material', traceComponentProperty),
+    beforeHook: strictGuardComponent,
+}, {
+    traceHook: controller.guardFunction('trace:set:MeshComponent.material', traceComponentSet),
+    beforeHook: guardComponentSetter,
+});

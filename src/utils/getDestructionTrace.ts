@@ -1,4 +1,4 @@
-import { controller } from './WLETraceController.js';
+import { controller } from '../WLETraceController.js';
 import { getStackTrace } from './getStackTrace.js';
 
 controller.registerFeature('destruction-traces');
