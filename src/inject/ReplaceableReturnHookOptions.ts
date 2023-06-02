@@ -5,10 +5,10 @@ export interface ReplaceableReturnHookOptions extends BaseHookOptions {
 }
 
 export function finalizeReplaceableReturnHookOptions(): null;
-export function finalizeReplaceableReturnHookOptions(options: undefined): null;
+export function finalizeReplaceableReturnHookOptions(options: undefined | null): null;
 export function finalizeReplaceableReturnHookOptions(options: ReplaceableReturnHookOptions): HookOptions;
-export function finalizeReplaceableReturnHookOptions(options?: ReplaceableReturnHookOptions): HookOptions | null;
-export function finalizeReplaceableReturnHookOptions(options?: ReplaceableReturnHookOptions): HookOptions | null {
+export function finalizeReplaceableReturnHookOptions(options?: ReplaceableReturnHookOptions | null): HookOptions | null;
+export function finalizeReplaceableReturnHookOptions(options?: ReplaceableReturnHookOptions | null): HookOptions | null {
     if (!options) {
         return null;
     }

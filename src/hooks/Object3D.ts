@@ -138,13 +138,23 @@ for (const name of Object.getOwnPropertyNames(Object3D.prototype)) {
 
     const descriptor = getPropertyDescriptor(Object3D.prototype, name);
     if (descriptor.get || descriptor.set) {
-        injectAccessor(Object3D.prototype, name, {
-            traceHook: controller.guardFunction(`trace:get:Object3D.${name}`, traceObjectProperty),
-            beforeHook: strictGuardObject,
-        }, {
-            traceHook: controller.guardFunction(`trace:set:Object3D.${name}`, traceObjectSet),
-            beforeHook: guardObjectAndSetter,
-        });
+        let getterOptions = null;
+        if (descriptor.get) {
+            getterOptions = {
+                traceHook: controller.guardFunction(`trace:get:Object3D.${name}`, traceObjectProperty),
+                beforeHook: strictGuardObject,
+            };
+        }
+
+        let setterOptions = null;
+        if (descriptor.set) {
+            setterOptions = {
+                traceHook: controller.guardFunction(`trace:set:Object3D.${name}`, traceObjectSet),
+                beforeHook: guardObjectAndSetter,
+            };
+        }
+
+        injectAccessor(Object3D.prototype, name, getterOptions, setterOptions);
     } else {
         injectMethod(Object3D.prototype, name, {
             traceHook: controller.guardFunction(`trace:Object3D.${name}`, traceObjectMethod),

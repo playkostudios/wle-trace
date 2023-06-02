@@ -3,7 +3,7 @@ import { addHooksToMember, type BaseHookOptions } from './addHooksToMember.js';
 import { badVersionErr } from './badVersionErr.js';
 import { getPropertyDescriptor } from './getPropertyDescriptor.js';
 
-export function injectAccessor(prototype: any, accessorName: string, getterOptions?: ReplaceableReturnHookOptions, setterOptions?: BaseHookOptions) {
+export function injectAccessor(prototype: any, accessorName: string, getterOptions?: ReplaceableReturnHookOptions | null, setterOptions?: BaseHookOptions | null) {
     const descriptor = getPropertyDescriptor(prototype, accessorName);
     const getOrig = descriptor.get;
     const setOrig = descriptor.set;

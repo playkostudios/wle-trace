@@ -1,10 +1,10 @@
 // XXX orig-properties needs to be imported first so that the unmodified
 //     properties can be get
-import './orig-properties.js';
-import './Object3D.js';
-import './Component.js';
-import './MeshComponent.js';
-import './Scene.js';
+import './hooks/orig-properties.js';
+import './hooks/Object3D.js';
+import './hooks/Component.js';
+import './hooks/MeshComponent.js';
+import './hooks/Scene.js';
 import { controller } from './WLETraceController.js';
 import type { WLETraceController } from './WLETraceController.js';
 

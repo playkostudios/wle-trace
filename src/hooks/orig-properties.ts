@@ -4,12 +4,12 @@ import { getValuePropertyDescriptor } from '../inject/getValuePropertyDescriptor
 
 // get original Component accessors to prevent infinite loops in tracer
 // callbacks
-export const origObjectGetter = getGetterPropertyDescriptor(Component, 'object');
-export const origTypeGetter = getGetterPropertyDescriptor(Component, 'type');
+export const origObjectGetter = getGetterPropertyDescriptor(Component.prototype, 'object');
+export const origTypeGetter = getGetterPropertyDescriptor(Component.prototype, 'type');
 
 // get original Object3D accessors/methods to prevent infinite loops in tracer
 // callbacks
-export const origNameGetter = getGetterPropertyDescriptor(Object3D, 'name');
-export const origParentGetter = getGetterPropertyDescriptor(Object3D, 'parent');
-export const origChildrenGetter = getGetterPropertyDescriptor(Object3D, 'children');
-export const origGetComponentsMethod = getValuePropertyDescriptor(Object3D, 'getComponents');
+export const origNameGetter = getGetterPropertyDescriptor(Object3D.prototype, 'name');
+export const origParentGetter = getGetterPropertyDescriptor(Object3D.prototype, 'parent');
+export const origChildrenGetter = getGetterPropertyDescriptor(Object3D.prototype, 'children');
+export const origGetComponentsMethod = getValuePropertyDescriptor(Object3D.prototype, 'getComponents');
