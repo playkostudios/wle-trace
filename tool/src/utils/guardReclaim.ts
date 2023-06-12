@@ -3,15 +3,24 @@ import { controller } from '../WLETraceController.js';
 import { origChildrenGetter, origGetComponentsMethod } from '../hooks/orig-properties.js';
 import { type TracedComponent } from '../types/TracedComponent.js';
 import { type TracedObject3D } from '../types/TracedObject3D.js';
+import { triggerBreakpoint } from './triggerBreakpoint.js';
 import { triggerGuardBreakpoint } from './triggerGuardBreakpoint.js';
 
 controller.registerFeature('trace:reclaim:Object3D');
 controller.registerFeature('trace:reclaim:Component');
 controller.registerFeature('guard:bad-reclaim:Object3D');
 controller.registerFeature('guard:bad-reclaim:Component');
+controller.registerFeature('trace:construction:Object3D');
+controller.registerFeature('construction:Object3D');
+controller.registerFeature('trace:construction:Component');
+controller.registerFeature('construction:Component');
 
 export function guardReclaimComponent(comp: TracedComponent) {
     let prevPath = null;
+    // HACK there is a bug in wonderland engine which causes random crashes and
+    //      bad component reclaim messages that are false-positives
+    // TODO remove this once WLE team fixes the bug
+    (comp as { _object: null })._object = null;
 
     if (comp.__wle_trace_destroyed_data) {
         prevPath = comp.__wle_trace_destroyed_data[0];
@@ -70,6 +79,16 @@ export function guardReclaimComponent(comp: TracedComponent) {
             }
         }
     }
+
+    if (controller.isEnabled('trace:construction:Component')) {
+        new StyledMessage()
+            .add('creating Component ')
+            .addSubMessage(StyledMessage.fromComponent(comp))
+            .add(` (ID ${comp._id})`)
+            .print(true);
+    }
+
+    triggerBreakpoint('construction:Component');
 }
 
 export function guardReclaimObject3D(obj: TracedObject3D) {
@@ -132,6 +151,16 @@ export function guardReclaimObject3D(obj: TracedObject3D) {
             }
         }
     }
+
+    if (controller.isEnabled('trace:construction:Object3D')) {
+        new StyledMessage()
+            .add('creating Object3D ')
+            .addSubMessage(StyledMessage.fromObject3D(obj))
+            .add(` (ID ${obj._objectId})`)
+            .print(true);
+    }
+
+    triggerBreakpoint('construction:Object3D');
 }
 
 export function guardReclaimObject3DRecursively(obj: TracedObject3D) {

@@ -18,7 +18,6 @@ import { TracedComponent } from '../types/TracedComponent.js';
 import { getPropertyDescriptor } from '../inject/getPropertyDescriptor.js';
 
 controller.registerFeature('trace:destruction:Object3D');
-controller.registerFeature('destruction:Object3D');
 
 // XXX object destruction order is from parent to child as of 1.0.2
 
@@ -61,7 +60,6 @@ function deepDestroyCheck(object: TracedObject3D) {
 
         const children = origChildrenGetter.apply(object);
         const components = origGetComponentsMethod.apply(object);
-        object.__wle_trace_destroying_data = [path, children, components, getDestructionTrace()];
 
         for (const comp of components) {
             componentDestroyCheck(comp);
@@ -70,6 +68,8 @@ function deepDestroyCheck(object: TracedObject3D) {
         for (const child of children) {
             deepDestroyCheck(child);
         }
+
+        object.__wle_trace_destroying_data = [path, children, components, getDestructionTrace()];
     }
 }
 

@@ -4,13 +4,13 @@ import { guardReclaimObject3D, guardReclaimObject3DRecursively } from '../utils/
 import { type TracedObject3D } from '../types/TracedObject3D.js';
 
 injectMethod(Scene.prototype, 'addObject', {
-    afterHook: (_obj: TracedObject3D, _methodName: string, _args: any[], newObj: TracedObject3D) => {
+    afterHook: (_scene: Scene, _methodName: string, _args: any[], newObj: TracedObject3D) => {
         guardReclaimObject3D(newObj);
     }
 });
 
 injectMethod(Scene.prototype, 'addObjects', {
-    afterHook: (_obj: TracedObject3D, _methodName: string, _args: any[], newObjs: TracedObject3D[]) => {
+    afterHook: (_scene: Scene, _methodName: string, _args: any[], newObjs: TracedObject3D[]) => {
         for (const newObj of newObjs) {
             guardReclaimObject3D(newObj);
         }
@@ -18,7 +18,7 @@ injectMethod(Scene.prototype, 'addObjects', {
 });
 
 injectMethod(Scene.prototype, 'append', {
-    afterHook: (_obj: TracedObject3D, _methodName: string, _args: any[], resultPromise: Promise<TracedObject3D | null | { root: TracedObject3D }>) => {
+    afterHook: (_scene: Scene, _methodName: string, _args: any[], resultPromise: Promise<TracedObject3D | null | { root: TracedObject3D }>) => {
         return new Promise((resolve, reject) => {
             resultPromise.then((result) => {
                 try {

@@ -14,12 +14,13 @@
 import wleTrace from 'wle-trace';
 wleTrace.enableWithPrefix('guard:');
 wleTrace.enableWithPrefix('trace:destruction:');
-wleTrace.enableWithPrefix('trace:reclaim:')
+wleTrace.enableWithPrefix('trace:construction:');
+// wleTrace.enableWithPrefix('trace:reclaim:')
 wleTrace.enable('breakpoint:guard-failed');
 wleTrace.enable('breakpoint:strict-guard-only');
-wleTrace.enable('fast-trace');
-wleTrace.enable('fast-objects');
-// wleTrace.enable('destruction-traces');
+// wleTrace.enable('fast-trace');
+// wleTrace.enable('fast-objects');
+wleTrace.enable('destruction-traces');
 
 /* wle:auto-imports:start */
 import {MouseLookComponent} from '@wonderlandengine/components';
