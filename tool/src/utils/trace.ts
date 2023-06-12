@@ -1,3 +1,4 @@
+import { type Mesh } from '@wonderlandengine/api';
 import { StyledMessage } from '../StyledMessage.js';
 import { type TracedComponent } from '../types/TracedComponent.js';
 import { type TracedObject3D } from '../types/TracedObject3D.js';
@@ -72,6 +73,41 @@ export function traceComponentProperty(component: TracedComponent, propertyName:
 
 export function traceComponentSet(component: TracedComponent, propertyName: string, args: any[]) {
     StyledMessage.fromComponent(component)
+        .add(`::${propertyName} = `)
+        .addSubMessage(StyledMessage.fromValue(args[0]))
+        .print(true);
+}
+
+export function traceValue(value: unknown) {
+    StyledMessage.fromValue(value)
+        .print(true);
+}
+
+export function traceValueMethod(value: unknown, methodName: string, args: any[]) {
+    const message = StyledMessage.fromValue(value).add(`::${methodName}(`);
+
+    let first = true;
+    for (const arg of args) {
+        if (first) {
+            first = false;
+        } else {
+            message.add(', ');
+        }
+
+        message.addSubMessage(StyledMessage.fromValue(arg));
+    }
+
+    message.add(')').print(true);
+}
+
+export function traceValueProperty(value: unknown, propertyName: string) {
+    StyledMessage.fromValue(value)
+        .add(`::${propertyName}`)
+        .print(true);
+}
+
+export function traceValueSet(value: unknown, propertyName: string, args: any[]) {
+    StyledMessage.fromValue(value)
         .add(`::${propertyName} = `)
         .addSubMessage(StyledMessage.fromValue(args[0]))
         .print(true);

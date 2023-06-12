@@ -1,4 +1,4 @@
-import { Component, Object3D, type WonderlandEngine } from '@wonderlandengine/api';
+import { Component, Material, Mesh, Object3D, Texture, type WonderlandEngine } from '@wonderlandengine/api';
 import { origChildrenGetter, origGetComponentsMethod, origNameGetter, origParentGetter, origObjectGetter, origTypeGetter } from './hooks/orig-properties.js';
 import { controller } from './WLETraceController.js';
 import { type TracedObject3D } from './types/TracedObject3D.js';
@@ -337,6 +337,12 @@ export class StyledMessage {
                     message.add('Component{');
                     message.addSubMessage(StyledMessage.fromComponent(value as unknown as TracedComponent));
                     message.add('}');
+                } else if (value instanceof Mesh) {
+                    message.add(`Mesh<${value._index}>`);
+                } else if (value instanceof Texture) {
+                    message.add(`Texture<${(value as unknown as { _id: number })._id}>`);
+                } else if (value instanceof Material) {
+                    message.add(`Material<${value._index}>`);
                 } else {
                     message.add('Instance{');
                     message.add(ctor.name, STR);
