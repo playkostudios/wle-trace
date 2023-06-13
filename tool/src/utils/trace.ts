@@ -1,4 +1,3 @@
-import { type Mesh } from '@wonderlandengine/api';
 import { StyledMessage } from '../StyledMessage.js';
 import { type TracedComponent } from '../types/TracedComponent.js';
 import { type TracedObject3D } from '../types/TracedObject3D.js';
@@ -111,4 +110,41 @@ export function traceValueSet(value: unknown, propertyName: string, args: any[])
         .add(`::${propertyName} = `)
         .addSubMessage(StyledMessage.fromValue(args[0]))
         .print(true);
+}
+
+export function makeGlobalObjMethodTracer(globalObjName: string) {
+    return function(_globalObj: unknown, methodName: string, args: any[]) {
+        const message = new StyledMessage().add(`${globalObjName}::${methodName}(`);
+
+        let first = true;
+        for (const arg of args) {
+            if (first) {
+                first = false;
+            } else {
+                message.add(', ');
+            }
+
+            message.addSubMessage(StyledMessage.fromValue(arg));
+        }
+
+        message.add(')').print(true);
+    }
+}
+
+export function makeGlobalObjPropertyTracer(globalObjName: string) {
+    return function(_globalObj: unknown, propertyName: string) {
+        new StyledMessage()
+            .add(`${globalObjName}::${propertyName}`)
+            .print(true);
+    }
+}
+
+
+export function makeGlobalObjSetTracer(globalObjName: string) {
+    return function(_globalObj: unknown, propertyName: string, args: any[]) {
+        new StyledMessage()
+            .add(`${globalObjName}::${propertyName} = `)
+            .addSubMessage(StyledMessage.fromValue(args[0]))
+            .print(true);
+    }
 }

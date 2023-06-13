@@ -18,9 +18,10 @@ wleTrace.enableWithPrefix('trace:construction:');
 // wleTrace.enableWithPrefix('trace:reclaim:')
 wleTrace.enable('breakpoint:guard-failed');
 wleTrace.enable('breakpoint:strict-guard-only');
-// wleTrace.enable('fast-trace');
+wleTrace.enable('fast-trace');
 // wleTrace.enable('fast-objects');
 wleTrace.enable('destruction-traces');
+wleTrace.enableWithPrefix('trace:');
 
 /* wle:auto-imports:start */
 import {MouseLookComponent} from '@wonderlandengine/components';

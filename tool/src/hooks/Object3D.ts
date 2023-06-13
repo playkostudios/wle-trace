@@ -21,7 +21,7 @@ controller.registerFeature('trace:destruction:Object3D');
 
 // XXX object destruction order is from parent to child as of 1.0.2
 
-function deepDestroyCheck(object: TracedObject3D) {
+export function deepDestroyCheck(object: TracedObject3D) {
     if (object.__wle_trace_destroyed_data) {
         new StyledMessage()
             .add('double-destroy detected in object ', ERR)
@@ -73,7 +73,7 @@ function deepDestroyCheck(object: TracedObject3D) {
     }
 }
 
-function deepDestroyMark(object: TracedObject3D) {
+export function deepDestroyMark(object: TracedObject3D) {
     // XXX only mark object as destroyed after calling destroy so that the
     //     tracer callback doesn't think the object is already destroyed
     if (object.__wle_trace_destroying_data) {

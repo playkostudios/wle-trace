@@ -5,19 +5,19 @@ import { injectAccessor } from '../inject/injectAccessor.js';
 import { injectMethod } from '../inject/injectMethod.js';
 import { traceValueMethod, traceValueProperty, traceValueSet } from '../utils/trace.js';
 import { guardMesh } from '../utils/guardMesh.js';
+import { trackedMeshes } from '../utils/trackedMeshes.js';
 
 controller.registerFeature('trace:destruction:Mesh');
 controller.registerFeature('destruction:Mesh');
 
-export const validMeshes = new Set();
-
-// TODO override constructor to create new mesh
-// TODO handle auto-created meshes from scene.append
+// XXX can't override constructor as that will break instanceof statements.
+//     however, we can override the internal WASM._wl_mesh_create method
+//     instead. this is done in the WonderlandEngine hooks
 
 injectMethod(Mesh.prototype, 'destroy', {
     traceHook: controller.guardFunction('trace:Mesh.destroy', traceValueMethod),
     beforeHook: (mesh: Mesh, _methodName: string) => {
-        validMeshes.delete(mesh._index);
+        trackedMeshes.set(mesh.engine, mesh._index, false);
     }
 });
 

@@ -1,3 +1,4 @@
+import { Mesh, type ComponentConstructor, type WonderlandEngine } from '@wonderlandengine/api';
 import { STR, StyledMessage, WARN } from '../StyledMessage.js';
 import { controller } from '../WLETraceController.js';
 import { origChildrenGetter, origGetComponentsMethod } from '../hooks/orig-properties.js';
@@ -5,6 +6,9 @@ import { type TracedComponent } from '../types/TracedComponent.js';
 import { type TracedObject3D } from '../types/TracedObject3D.js';
 import { triggerBreakpoint } from './triggerBreakpoint.js';
 import { triggerGuardBreakpoint } from './triggerGuardBreakpoint.js';
+import { trackedMeshes } from './trackedMeshes.js';
+import { trackedObject3Ds } from './trackedObject3Ds.js';
+import { trackedComponents } from './trackedComponents.js';
 
 controller.registerFeature('trace:reclaim:Object3D');
 controller.registerFeature('trace:reclaim:Component');
@@ -14,8 +18,11 @@ controller.registerFeature('trace:construction:Object3D');
 controller.registerFeature('construction:Object3D');
 controller.registerFeature('trace:construction:Component');
 controller.registerFeature('construction:Component');
+controller.registerFeature('trace:construction:Mesh');
+controller.registerFeature('construction:Mesh');
 
 export function guardReclaimComponent(comp: TracedComponent) {
+    trackedComponents.add(comp.engine, comp);
     let prevPath = null;
     // HACK there is a bug in wonderland engine which causes random crashes and
     //      bad component reclaim messages that are false-positives
@@ -92,8 +99,9 @@ export function guardReclaimComponent(comp: TracedComponent) {
 }
 
 export function guardReclaimObject3D(obj: TracedObject3D) {
-    let prevPath = null;
+    trackedObject3Ds.add(obj._engine, obj);
 
+    let prevPath = null;
     if (obj.__wle_trace_destroyed_data) {
         prevPath = obj.__wle_trace_destroyed_data[0];
         delete obj.__wle_trace_destroyed_data;
@@ -167,10 +175,44 @@ export function guardReclaimObject3DRecursively(obj: TracedObject3D) {
     guardReclaimObject3D(obj);
 
     for (const comp of origGetComponentsMethod.apply(obj)) {
+        // XXX try to mark properties in loaded component as new if never seen
+        //     before
+        const ctor = comp.constructor as ComponentConstructor;
+        for (const propertyName of Object.getOwnPropertyNames(ctor.Properties)) {
+            const propertyValue = (comp as unknown as Record<string, unknown>)[propertyName];
+
+            if (propertyValue !== undefined && propertyValue !== null && typeof propertyValue === 'object') {
+                if (propertyValue instanceof Mesh) {
+                    guardReclaimMesh(comp.engine, propertyValue);
+                }
+            }
+        }
+
         guardReclaimComponent(comp);
     }
 
     for (const child of origChildrenGetter.apply(obj)) {
         guardReclaimObject3DRecursively(child);
     }
+}
+
+export function guardReclaimMesh(engine: WonderlandEngine, meshOrIdx: Mesh | number) {
+    const meshIdx = (typeof meshOrIdx === 'number') ? meshOrIdx : meshOrIdx._index;
+
+    const isValid = trackedMeshes.get(engine, meshIdx);
+    if (isValid === undefined) {
+        trackedMeshes.set(engine, meshIdx, true);
+    } else if (!isValid) {
+        // TODO proper error logging, and check if there is mesh reclaiming
+        throw new Error('whoa!');
+    }
+
+    if (controller.isEnabled('trace:construction:Mesh')) {
+        new StyledMessage()
+            .add('creating Mesh ')
+            .addSubMessage(StyledMessage.fromMesh(meshIdx))
+            .print(true);
+    }
+
+    triggerBreakpoint('construction:Mesh');
 }
