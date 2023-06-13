@@ -322,7 +322,7 @@ export class StyledMessage {
                                 message.add(' <setter>');
                             } else {
                                 const subValue = descriptor.value;
-                                if (isFunction(subValue)) {
+                                if ((typeof subValue === 'function') && isFunction(subValue)) {
                                     // method (or function, but no difference)
                                     message.add('()');
                                 } else {
