@@ -12,16 +12,31 @@
  */
 
 import wleTrace from 'wle-trace';
-wleTrace.enableWithPrefix('guard:');
-wleTrace.enableWithPrefix('trace:destruction:');
-wleTrace.enableWithPrefix('trace:construction:');
-// wleTrace.enableWithPrefix('trace:reclaim:')
-wleTrace.enable('breakpoint:guard-failed');
-wleTrace.enable('breakpoint:strict-guard-only');
-wleTrace.enable('fast-trace');
-// wleTrace.enable('fast-objects');
-wleTrace.enable('destruction-traces');
-wleTrace.enableWithPrefix('trace:');
+
+wleTrace.waitForInjections(() => {
+    wleTrace.enableWithPrefix('guard:');
+    wleTrace.enableWithPrefix('trace:destruction:');
+    wleTrace.enableWithPrefix('trace:construction:');
+    // wleTrace.enableWithPrefix('trace:reclaim:')
+    wleTrace.enable('breakpoint:guard-failed');
+    wleTrace.enable('breakpoint:strict-guard-only');
+    // wleTrace.enable('fast-trace');
+    // wleTrace.enable('fast-objects');
+    wleTrace.enable('destruction-traces');
+
+    wleTrace.enableWithPrefix('trace:');
+    wleTrace.disableWithPrefix('trace:WASM.');
+    wleTrace.disableWithPrefix('trace:Object3D.translate');
+    wleTrace.disableWithPrefix('trace:Object3D.rotate');
+    wleTrace.disableWithPrefix('trace:Object3D.reset');
+    wleTrace.disableWithPrefix('trace:Object3D.getPosition');
+    wleTrace.disableWithPrefix('trace:Object3D.getTranslation');
+    wleTrace.disableWithPrefix('trace:get:Object3D.parent');
+    wleTrace.disableWithPrefix('trace:get:Object3D.transform');
+    wleTrace.disableWithPrefix('trace:set:Object3D.transform');
+    wleTrace.disable('trace:get:Component.object');
+    wleTrace.disable('trace:get:Component.active');
+})
 
 /* wle:auto-imports:start */
 import {MouseLookComponent} from '@wonderlandengine/components';

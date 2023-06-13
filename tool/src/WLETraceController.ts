@@ -1,5 +1,6 @@
 export class WLETraceController {
     features = new Map<string, boolean>();
+    _injectionQueue: Array<(controller: WLETraceController) => void> | null = [];
 
     registerFeature(id: string) {
         this.features.set(id, false);
@@ -83,6 +84,26 @@ export class WLETraceController {
             if (thisController.isEnabled(id)) {
                 func.apply(this, args);
             }
+        }
+    }
+
+    waitForInjections(callback: (controller: WLETraceController) => void) {
+        if (this._injectionQueue === null) {
+            callback(this);
+        } else {
+            this._injectionQueue.push(callback);
+        }
+    }
+
+    _markInjectionsDone() {
+        if (this._injectionQueue) {
+            console.debug('[wle-trace CONTROLLER] ready; engine loaded, all hooks injected');
+
+            for (const callback of this._injectionQueue) {
+                callback(this);
+            }
+
+            this._injectionQueue = null;
         }
     }
 }

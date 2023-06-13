@@ -1,5 +1,5 @@
 import { Object3D } from '@wonderlandengine/api';
-import { ERR, StyledMessage } from '../StyledMessage.js';
+import { ERR, StyledMessage, WARN } from '../StyledMessage.js';
 import { controller } from '../WLETraceController.js';
 import { injectAccessor } from '../inject/injectAccessor.js';
 import { injectMethod } from '../inject/injectMethod.js';
@@ -106,8 +106,46 @@ function guardObjectAndSetter(obj: TracedObject3D, setterName: string, args: any
 }
 
 // track destroyed objects
+// XXX destroy method trace hook needs a special case where the destroying path
+//     is used to prevent confusion, otherwise there is a <destroying object;...
+//     prefix
+function traceDestroyMethod(object: TracedObject3D, _methodName: string, args: any[]) {
+    let wtfMessage = null;
+    let path;
+    if (object.__wle_trace_destroying_data) {
+        path = object.__wle_trace_destroying_data[0];
+    } else if (object.__wle_trace_destroyed_data) {
+        path = object.__wle_trace_destroyed_data[0];
+        wtfMessage = new StyledMessage().add(' - double-destroy', ERR);
+    } else {
+        path = StyledMessage.fromObject3D(object);
+        wtfMessage = new StyledMessage().add(' - destroy called, but object is not marked as being destroyed', WARN);
+    }
+
+    const message = path.add('::destroy(');
+
+    let first = true;
+    for (const arg of args) {
+        if (first) {
+            first = false;
+        } else {
+            message.add(', ');
+        }
+
+        message.addSubMessage(StyledMessage.fromValue(arg));
+    }
+
+    message.add(')');
+
+    if (wtfMessage) {
+        message.addSubMessage(wtfMessage);
+    }
+
+    message.print(true);
+}
+
 injectMethod(Object3D.prototype, 'destroy', {
-    traceHook: controller.guardFunction('trace:Object3D.destroy', traceObjectMethod),
+    traceHook: controller.guardFunction('trace:Object3D.destroy', traceDestroyMethod),
     beforeHook: (object: TracedObject3D, _methodName: string) => {
         deepDestroyCheck(object);
     },
