@@ -6,8 +6,8 @@ import { injectMethod } from '../inject/injectMethod.js';
 import { type TracedComponent } from '../types/TracedComponent.js';
 import { getDestructionTrace } from '../utils/getDestructionTrace.js';
 import { strictGuardComponent } from '../utils/guardComponent.js';
-import { guardComponentSetter } from '../utils/guardSetter.js';
-import { traceComponentMethod, traceComponentProperty, traceComponentSet } from '../utils/trace.js';
+import { guardComponentSetterIAC } from '../utils/guardSetter.js';
+import { traceComponentMethod, traceComponentProperty, traceComponentSetIAC } from '../utils/trace.js';
 import { triggerBreakpoint } from '../utils/triggerBreakpoint.js';
 import { triggerGuardBreakpoint } from '../utils/triggerGuardBreakpoint.js';
 
@@ -62,8 +62,8 @@ injectAccessor(Component.prototype, 'active', {
     traceHook: controller.guardFunction('trace:get:Component.active', traceComponentProperty),
     beforeHook: strictGuardComponent,
 }, {
-    traceHook: controller.guardFunction('trace:set:Component.active', traceComponentSet),
-    beforeHook: guardComponentSetter,
+    traceHook: controller.guardFunction('trace:set:Component.active', traceComponentSetIAC),
+    beforeHook: guardComponentSetterIAC,
 });
 
 // getters

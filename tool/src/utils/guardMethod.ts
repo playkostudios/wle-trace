@@ -18,6 +18,12 @@ function guardMethod(isObject: boolean, objOrComp: TracedComponent | TracedObjec
         return;
     }
 
+    if (isObject) {
+        guardObject(objOrComp as TracedObject3D, strict);
+    } else {
+        guardComponent(objOrComp as TracedComponent, strict);
+    }
+
     const originFactoryBind = originFactory.bind(null, isObject, objOrComp, methodName);
 
     let idx = 0;

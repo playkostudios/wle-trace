@@ -16,6 +16,7 @@ import { origChildrenGetter, origGetComponentsMethod } from './orig-properties.j
 import { type TracedObject3D } from '../types/TracedObject3D.js';
 import { TracedComponent } from '../types/TracedComponent.js';
 import { getPropertyDescriptor } from '../inject/getPropertyDescriptor.js';
+import { inAddComponent } from '../utils/inAddComponent.js';
 
 controller.registerFeature('trace:destruction:Object3D');
 
@@ -146,10 +147,13 @@ function traceDestroyMethod(object: TracedObject3D, _methodName: string, args: a
 
 injectMethod(Object3D.prototype, 'destroy', {
     traceHook: controller.guardFunction('trace:Object3D.destroy', traceDestroyMethod),
-    beforeHook: (object: TracedObject3D, _methodName: string) => {
+    beforeHook: (object: TracedObject3D, _methodName: string, _args: any[]) => {
         deepDestroyCheck(object);
     },
-    afterHook: (object: TracedObject3D, _methodName: string) => {
+    afterHook: (object: TracedObject3D, _methodName: string, _args: any[]) => {
+        deepDestroyMark(object);
+    },
+    exceptionHook: (object: TracedObject3D, _methodName: string, _args: any[]) => {
         deepDestroyMark(object);
     },
 });
@@ -157,11 +161,19 @@ injectMethod(Object3D.prototype, 'destroy', {
 // guard against reclaim bugs on reclaimed components
 injectMethod(Object3D.prototype, 'addComponent', {
     traceHook: controller.guardFunction('trace:Object3D.addComponent', traceObjectMethod),
-    beforeHook: guardObjectAndMethod,
-    afterHook: (_obj: TracedObject3D, _methodName: string, _args: any[], newComp: TracedComponent) => {
+    beforeHook: (obj: TracedObject3D, methodName: string, args: any[]) => {
+        guardObjectAndMethod(obj, methodName, args);
+        inAddComponent.add(obj._engine);
+    },
+    afterHook: (obj: TracedObject3D, _methodName: string, _args: any[], newComp: TracedComponent) => {
+        inAddComponent.delete(obj._engine);
+
         if (newComp) {
             guardReclaimComponent(newComp);
         }
+    },
+    exceptionHook: (obj: TracedObject3D, _methodName: string, _args: any[], _error: unknown) => {
+        inAddComponent.delete(obj._engine);
     },
 });
 

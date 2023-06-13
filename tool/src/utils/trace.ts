@@ -1,6 +1,7 @@
 import { StyledMessage } from '../StyledMessage.js';
 import { type TracedComponent } from '../types/TracedComponent.js';
 import { type TracedObject3D } from '../types/TracedObject3D.js';
+import { inAddComponent } from './inAddComponent.js';
 
 // wle-trace message format:
 // [wle-trace] <path-part>[<path-part-collision-index>]/<path-part>[<path-part-collision-index>](...):<component-name>[<component-name-collision-index>](|::<method-name>([<argument>](...))|::<property-name>[ = <new-value>])
@@ -75,6 +76,12 @@ export function traceComponentSet(component: TracedComponent, propertyName: stri
         .add(`::${propertyName} = `)
         .addSubMessage(StyledMessage.fromValue(args[0]))
         .print(true);
+}
+
+export function traceComponentSetIAC(component: TracedComponent, propertyName: string, args: any[]) {
+    if (!inAddComponent.has(component.engine)) {
+        traceComponentSet(component, propertyName, args);
+    }
 }
 
 export function traceValue(value: unknown) {
