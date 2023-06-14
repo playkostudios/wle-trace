@@ -28,6 +28,8 @@ wleTrace.waitForInjections(() => {
 
     wleTrace.enableWithPrefix('trace:');
     wleTrace.disableWithPrefix('trace:WASM.');
+    wleTrace.enable('trace:WASM._wljs_component_create');
+    wleTrace.enable('trace:WASM._wljs_component_init');
     wleTrace.enable('trace:WASM._wljs_component_onDestroy');
     wleTrace.enable('trace:WASM._wl_load_scene_bin');
     wleTrace.disableWithPrefix('trace:Object3D.translate');

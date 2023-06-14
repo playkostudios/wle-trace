@@ -5,7 +5,11 @@ import { controller } from '../WLETraceController.js';
 import { getPropertyDescriptor } from '../inject/getPropertyDescriptor.js';
 import { wasmMethodTracer } from '../utils/wasmMethodTracer.js';
 import { traceEmitter } from '../utils/traceEmitter.js';
-import { trackedDestroyMark } from '../utils/objectDestroy.js';
+import { sceneDestroyCheck } from '../utils/objectDestroy.js';
+import { inSceneLoad } from '../utils/inSceneLoad.js';
+import { ERR, StyledMessage } from '../StyledMessage.js';
+import { handleScenePostReplace } from '../utils/handleScenePostReplace.js';
+import { triggerGuardBreakpoint } from '../utils/triggerGuardBreakpoint.js';
 
 controller.registerFeature('trace:emitter:WonderlandEngine.onSceneLoaded');
 
@@ -16,12 +20,6 @@ injectMethod(WonderlandEngine.prototype, '_init', {
     beforeHook: (engine: WonderlandEngine, _methodName: string, _args: any[]) => {
         engine.onSceneLoaded.add(() => {
             traceEmitter('WonderlandEngine.onSceneLoaded');
-
-            // destroy previously created objects and components
-            trackedDestroyMark(engine, 'Scene.load');
-
-            // reclaim objects in scene
-            guardReclaimScene(engine);
         });
 
         const wasm = engine.wasm;
@@ -33,8 +31,46 @@ injectMethod(WonderlandEngine.prototype, '_init', {
             }
         });
 
+        injectMethod(wasm, '_wl_load_scene_bin', {
+            beforeHook: (wasm: WASM, _methodName: string, _args: any[]) => {
+                sceneDestroyCheck(engine);
+
+                if (inSceneLoad.has(wasm)) {
+                    new StyledMessage()
+                        .add('Scene load started while another scene is being loaded. wle-trace will not be able to accurately track which Object3D/Component instances were added. This might also be a bug on your end')
+                        .print(true, ERR);
+                } else {
+                    inSceneLoad.set(wasm, [false, engine]);
+                }
+            },
+            traceHook: controller.guardFunction('trace:WASM._wl_load_scene_bin', wasmMethodTracer),
+            afterHook: (wasm: WASM, _methodName: string, _args: any[]) => {
+                const hadInitEngine = inSceneLoad.get(wasm);
+                inSceneLoad.delete(wasm);
+
+                if (!hadInitEngine) {
+                    if (controller.isEnabled('debug:bad-scene-load-tracking')) {
+                        new StyledMessage()
+                            .add('bad Scene.load tracking detected')
+                            .print(true, ERR);
+
+                        debugger;
+                    }
+
+                    return;
+                }
+
+                if (!hadInitEngine[0]) {
+                    handleScenePostReplace(engine, 'Scene.load');
+                }
+            },
+            exceptionHook: (wasm: WASM, _methodName: string, _args: any[], _error: unknown) => {
+                inSceneLoad.delete(wasm);
+            },
+        });
+
         // auto-inject trivial internal calls
-        const PROPERTY_DENY_LIST = new Set([ '_wl_mesh_create' ]);
+        const PROPERTY_DENY_LIST = new Set([ '_wl_mesh_create', '_wl_load_scene_bin' ]);
 
         for (const name of Object.getOwnPropertyNames(wasm)) {
             if (PROPERTY_DENY_LIST.has(name)) {

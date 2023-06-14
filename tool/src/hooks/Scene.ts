@@ -24,10 +24,10 @@ injectMethod(Scene.prototype, 'addObjects', {
     }
 });
 
+// XXX for scene reset tracking logic, check _wl_load_scene_bin hook, as well as
+//     _wljs_component_init; there is no clean way to know when the objects are
+//     added but not initialized in scene.load
 injectMethod(Scene.prototype, 'load', {
-    beforeHook: (scene: Scene, _methodName: string, _args: any[]) => {
-        sceneDestroyCheck(scene.engine);
-    },
     traceHook: controller.guardFunction('trace:Scene.load', sceneMethodTracer),
 });
 

@@ -19,8 +19,7 @@ export function guardObject(obj: TracedObject3D, strict: boolean, originFactory:
                 .add(`ghost Object3D (ID ${obj._objectId}) detected in guard`)
                 .print(true, ERR);
 
-            triggerGuardBreakpoint(strict);
-
+            debugger;
             return;
         }
     }

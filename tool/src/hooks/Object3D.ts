@@ -71,7 +71,7 @@ injectMethod(Object3D.prototype, 'destroy', {
     afterHook: (object: TracedObject3D, _methodName: string, _args: any[]) => {
         deepDestroyMark(object);
     },
-    exceptionHook: (object: TracedObject3D, _methodName: string, _args: any[]) => {
+    exceptionHook: (object: TracedObject3D, _methodName: string, _args: any[], _error: unknown) => {
         deepDestroyMark(object);
     },
 });

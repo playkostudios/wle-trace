@@ -21,8 +21,7 @@ export function guardComponent(component: TracedComponent, strict: boolean, orig
                 .add(`ghost Component (ID ${component._id}) detected in guard`)
                 .print(true, ERR);
 
-            triggerGuardBreakpoint(strict);
-
+            debugger;
             return;
         }
     }
