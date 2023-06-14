@@ -233,6 +233,14 @@ export class StyledMessage {
         return new StyledMessage().add(`Mesh<${meshOrIdx}>`);
     }
 
+    static fromTexture(textureOrId: Texture | number) {
+        if (typeof textureOrId !== 'number') {
+            textureOrId = textureOrId.id;
+        }
+
+        return new StyledMessage().add(`Texture<${textureOrId}>`);
+    }
+
     static fromValue(value: unknown) {
         const message = new StyledMessage();
 
@@ -347,6 +355,8 @@ export class StyledMessage {
                     message.add('}');
                 } else if (value instanceof Mesh) {
                     message.addSubMessage(StyledMessage.fromMesh(value));
+                } else if (value instanceof Texture) {
+                    message.addSubMessage(StyledMessage.fromTexture(value));
                 } else if (value instanceof Texture) {
                     message.add(`Texture<${(value as unknown as { _id: number })._id}>`);
                 } else if (value instanceof Material) {

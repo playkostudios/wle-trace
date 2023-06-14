@@ -4,6 +4,7 @@ import './hooks/orig-properties.js';
 import './hooks/WASM.js';
 import './hooks/WonderlandEngine.js';
 import './hooks/Mesh.js';
+import './hooks/Texture.js';
 import './hooks/Object3D.js';
 import './hooks/Component.js';
 import './hooks/MeshComponent.js';

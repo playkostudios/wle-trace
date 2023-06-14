@@ -1,4 +1,4 @@
-import { Mesh, type ComponentConstructor, type WonderlandEngine } from '@wonderlandengine/api';
+import { Mesh, type ComponentConstructor, type WonderlandEngine, Texture } from '@wonderlandengine/api';
 import { STR, StyledMessage, WARN } from '../StyledMessage.js';
 import { controller } from '../WLETraceController.js';
 import { origChildrenGetter, origGetComponentsMethod } from '../hooks/orig-properties.js';
@@ -9,6 +9,7 @@ import { triggerGuardBreakpoint } from './triggerGuardBreakpoint.js';
 import { trackedMeshes } from './trackedMeshes.js';
 import { trackedObject3Ds } from './trackedObject3Ds.js';
 import { trackedComponents } from './trackedComponents.js';
+import { trackedTextures } from './trackedTextures.js';
 
 controller.registerFeature('trace:reclaim:Object3D');
 controller.registerFeature('trace:reclaim:Component');
@@ -202,6 +203,7 @@ export function guardReclaimObject3DRecursively(obj: TracedObject3D) {
                     break;
                 case 'text':
                     // TODO check material
+                    // TODO guess textures from material
                     break;
                 case 'mesh':
                 {
@@ -210,6 +212,8 @@ export function guardReclaimObject3DRecursively(obj: TracedObject3D) {
                     if (mesh) {
                         guardReclaimMesh(obj._engine, mesh);
                     }
+
+                    // TODO guess textures from material
                     break;
                 }
                 default:
@@ -221,6 +225,8 @@ export function guardReclaimObject3DRecursively(obj: TracedObject3D) {
                         if (propertyValue !== undefined && propertyValue !== null && typeof propertyValue === 'object') {
                             if (propertyValue instanceof Mesh) {
                                 guardReclaimMesh(comp.engine, propertyValue);
+                            } else if (propertyValue instanceof Texture) {
+                                guardReclaimTexture(comp.engine, propertyValue);
                             }
                         }
                     }
@@ -242,6 +248,9 @@ export function guardReclaimMesh(engine: WonderlandEngine, meshOrIdx: Mesh | num
     } else if (!isValid) {
         // TODO proper error logging, and check if there is mesh reclaiming
         throw new Error('whoa!');
+    } else {
+        // mesh already existed
+        return;
     }
 
     if (controller.isEnabled('trace:construction:Mesh')) {
@@ -252,6 +261,30 @@ export function guardReclaimMesh(engine: WonderlandEngine, meshOrIdx: Mesh | num
     }
 
     triggerBreakpoint('construction:Mesh');
+}
+
+export function guardReclaimTexture(engine: WonderlandEngine, textureOrId: Texture | number) {
+    const textureId = (typeof textureOrId === 'number') ? textureOrId : textureOrId.id;
+
+    const isValid = trackedMeshes.get(engine, textureId);
+    if (isValid === undefined) {
+        trackedTextures.set(engine, textureId, true);
+    } else if (!isValid) {
+        // TODO proper error logging, and check if there is texture reclaiming
+        throw new Error('whoa!');
+    } else {
+        // texture already existed
+        return;
+    }
+
+    if (controller.isEnabled('trace:construction:Texture')) {
+        new StyledMessage()
+            .add('creating Texture ')
+            .addSubMessage(StyledMessage.fromTexture(textureId))
+            .print(true);
+    }
+
+    triggerBreakpoint('construction:Texture');
 }
 
 export function guardReclaimScene(engine: WonderlandEngine) {

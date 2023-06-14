@@ -1,6 +1,6 @@
 import { type WASM, WonderlandEngine } from '@wonderlandengine/api';
 import { injectMethod } from '../inject/injectMethod.js';
-import { guardReclaimMesh, guardReclaimScene } from '../utils/guardReclaim.js';
+import { guardReclaimMesh, guardReclaimScene, guardReclaimTexture } from '../utils/guardReclaim.js';
 import { controller } from '../WLETraceController.js';
 import { getPropertyDescriptor } from '../inject/getPropertyDescriptor.js';
 import { wasmMethodTracer } from '../utils/wasmMethodTracer.js';
@@ -27,6 +27,13 @@ injectMethod(WonderlandEngine.prototype, '_init', {
             traceHook: controller.guardFunction('trace:WASM._wl_mesh_create', wasmMethodTracer),
             afterHook: (_wasm: WASM, _methodName: string, _args: any[], meshIdx: number) => {
                 guardReclaimMesh(engine, meshIdx);
+            }
+        });
+
+        injectMethod(wasm, '_wl_renderer_addImage', {
+            traceHook: controller.guardFunction('trace:WASM._wl_renderer_addImage', wasmMethodTracer),
+            afterHook: (_wasm: WASM, _methodName: string, _args: any[], textureId: number) => {
+                guardReclaimTexture(engine, textureId);
             }
         });
 
@@ -69,7 +76,7 @@ injectMethod(WonderlandEngine.prototype, '_init', {
         });
 
         // auto-inject trivial internal calls
-        const PROPERTY_DENY_LIST = new Set([ '_wl_mesh_create', '_wl_load_scene_bin' ]);
+        const PROPERTY_DENY_LIST = new Set([ '_wl_mesh_create', '_wl_renderer_addImage', '_wl_load_scene_bin' ]);
 
         for (const name of Object.getOwnPropertyNames(wasm)) {
             if (PROPERTY_DENY_LIST.has(name)) {
