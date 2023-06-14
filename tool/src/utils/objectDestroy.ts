@@ -97,7 +97,7 @@ export function deepDestroyMark(object: TracedObject3D) {
     }
 }
 
-export function sceneDestroyMark(engine: WonderlandEngine) {
+export function sceneDestroyCheck(engine: WonderlandEngine) {
     // mark everything in scene as being destroyed
     const sceneRoot = engine.wrapObject(0);
     const children = origChildrenGetter.apply(sceneRoot);
