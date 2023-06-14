@@ -175,6 +175,11 @@ export function guardReclaimObject3DRecursively(obj: TracedObject3D) {
     guardReclaimObject3D(obj);
 
     for (const comp of origGetComponentsMethod.apply(obj)) {
+        // XXX make sure to reclaim the component __before__ reclaiming the
+        //     component properties, otherwise there is a false-positive for
+        //     use-after-destroy
+        guardReclaimComponent(comp);
+
         // XXX try to mark properties in loaded component as new if never seen
         //     before
         const ctor = comp.constructor as ComponentConstructor;
@@ -187,8 +192,6 @@ export function guardReclaimObject3DRecursively(obj: TracedObject3D) {
                 }
             }
         }
-
-        guardReclaimComponent(comp);
     }
 
     for (const child of origChildrenGetter.apply(obj)) {
