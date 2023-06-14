@@ -9,6 +9,6 @@ export function addDestructionTrace(message: StyledMessage, trace: string | null
     if (trace) {
         message.add(`. Originally destroyed in following trace:\n${trace}`);
     } else {
-        message.add('. Destruction trace not available; destruction-traces feature not enabled when destroy was called');
+        message.add('. Destruction trace not available; destruction-traces feature not enabled when destroy was called, or destruction condition was unexpected');
     }
 }

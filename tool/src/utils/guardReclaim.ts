@@ -216,3 +216,17 @@ export function guardReclaimMesh(engine: WonderlandEngine, meshOrIdx: Mesh | num
 
     triggerBreakpoint('construction:Mesh');
 }
+
+export function guardReclaimScene(engine: WonderlandEngine) {
+    const sceneRoot = engine.wrapObject(0);
+    const children = origChildrenGetter.apply(sceneRoot);
+    const components = origGetComponentsMethod.apply(sceneRoot);
+
+    for (const comp of components) {
+        guardReclaimComponent(comp);
+    }
+
+    for (const child of children) {
+        guardReclaimObject3DRecursively(child);
+    }
+}

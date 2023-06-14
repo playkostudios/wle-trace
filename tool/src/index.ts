@@ -1,6 +1,7 @@
 // XXX orig-properties needs to be imported first so that the unmodified
 //     properties can be get
 import './hooks/orig-properties.js';
+import './hooks/WASM.js';
 import './hooks/WonderlandEngine.js';
 import './hooks/Mesh.js';
 import './hooks/Object3D.js';

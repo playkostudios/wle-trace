@@ -45,8 +45,12 @@ export function addHooksToMember(func: Function, memberName: string, options: Ho
     // -- decide argument list for wrapper curry --
     let newBody = [];
     const extraParams = ['f'];
-    const extraArgs = [func];
+    const extraArgs: any[] = [func];
 
+    if (beforeHook || traceHook || afterHook || exceptionHook) {
+        extraParams.push('n');
+        extraArgs.push(memberName);
+    }
     if (safeHooks) {
         extraParams.push('sh');
         extraArgs.push(handleHookError);
@@ -77,10 +81,10 @@ export function addHooksToMember(func: Function, memberName: string, options: Ho
         }
 
         if (beforeHook) {
-            newBody.push(`bh(this,'${memberName}',a);`);
+            newBody.push('bh(this,n,a);');
         }
         if (traceHook) {
-            newBody.push(`th(this,'${memberName}',a);`);
+            newBody.push('th(this,n,a);');
         }
 
         if (safeHooks) {
@@ -110,7 +114,7 @@ export function addHooksToMember(func: Function, memberName: string, options: Ho
             newBody.push('try{');
         }
 
-        newBody.push(`eh(this,'${memberName}',a,e);`);
+        newBody.push('eh(this,n,a,e);');
 
         if (safeHooks) {
             newBody.push('}catch(e2){sh(e2)}');
@@ -129,7 +133,7 @@ export function addHooksToMember(func: Function, memberName: string, options: Ho
             newBody.push('r=');
         }
 
-        newBody.push(`ah(this,'${memberName}',a,r);`);
+        newBody.push('ah(this,n,a,r);');
 
         if (safeHooks) {
             newBody.push('}catch(e){sh(e)}');

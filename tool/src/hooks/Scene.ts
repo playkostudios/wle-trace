@@ -4,6 +4,7 @@ import { guardReclaimObject3D, guardReclaimObject3DRecursively } from '../utils/
 import { type TracedObject3D } from '../types/TracedObject3D.js';
 import { makeGlobalObjMethodTracer } from '../utils/trace.js';
 import { controller } from '../WLETraceController.js';
+import { sceneDestroyMark, trackedDestroyMark } from '../utils/objectDestroy.js';
 
 const sceneMethodTracer = makeGlobalObjMethodTracer('Scene');
 
@@ -24,6 +25,9 @@ injectMethod(Scene.prototype, 'addObjects', {
 });
 
 injectMethod(Scene.prototype, 'load', {
+    beforeHook: (scene: Scene, _methodName: string, _args: any[]) => {
+        sceneDestroyMark(scene.engine);
+    },
     traceHook: controller.guardFunction('trace:Scene.load', sceneMethodTracer),
 });
 
@@ -50,4 +54,14 @@ injectMethod(Scene.prototype, 'append', {
     },
     safeHooks: false,
     afterHookReplacesReturn: true,
+});
+
+injectMethod(Scene.prototype, 'reset', {
+    beforeHook: (scene: Scene, _methodName: string, _args: any[]) => {
+        sceneDestroyMark(scene.engine);
+    },
+    afterHook: (scene: Scene, _methodName: string, _args: any[]) => {
+        trackedDestroyMark(scene.engine, 'Scene.load');
+    },
+    traceHook: controller.guardFunction('trace:Scene.reset', sceneMethodTracer),
 });

@@ -13,6 +13,7 @@
 
 import wleTrace from 'wle-trace';
 
+let firstLoad = true;
 wleTrace.waitForInjections(() => {
     wleTrace.enableWithPrefix('guard:');
     wleTrace.enableWithPrefix('trace:destruction:');
@@ -26,6 +27,8 @@ wleTrace.waitForInjections(() => {
 
     wleTrace.enableWithPrefix('trace:');
     wleTrace.disableWithPrefix('trace:WASM.');
+    wleTrace.enable('trace:WASM._wljs_component_onDestroy');
+    wleTrace.enable('trace:WASM._wl_load_scene_bin');
     wleTrace.disableWithPrefix('trace:Object3D.translate');
     wleTrace.disableWithPrefix('trace:Object3D.rotate');
     wleTrace.disableWithPrefix('trace:Object3D.reset');
@@ -36,6 +39,19 @@ wleTrace.waitForInjections(() => {
     wleTrace.disableWithPrefix('trace:set:Object3D.transform');
     wleTrace.disable('trace:get:Component.object');
     wleTrace.disable('trace:get:Component.active');
+
+    return;
+    if (firstLoad) {
+        firstLoad = false;
+        const timeoutMS = 2500;
+
+        console.debug(`[wle-trace TEST] reloading scene in ${timeoutMS} milliseconds`);
+
+        setTimeout(() => {
+            console.debug('[wle-trace TEST] reloading scene...');
+            engine.scene.load(`${Constants.ProjectName}.bin`);
+        }, timeoutMS);
+    }
 })
 
 /* wle:auto-imports:start */
