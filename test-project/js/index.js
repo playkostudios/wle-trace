@@ -24,6 +24,7 @@ wleTrace.waitForInjections(() => {
     // wleTrace.enable('fast-trace');
     // wleTrace.enable('fast-objects');
     wleTrace.enable('destruction-traces');
+    wleTrace.enableWithPrefix('debug:');
 
     wleTrace.enableWithPrefix('trace:');
     wleTrace.disableWithPrefix('trace:WASM.');

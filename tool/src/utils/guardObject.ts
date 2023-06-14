@@ -3,12 +3,26 @@ import { ERR, StyledMessage, WARN } from '../StyledMessage.js';
 import { controller } from '../WLETraceController.js';
 import { addDestructionTrace } from './addDestructionTrace.js';
 import { triggerGuardBreakpoint } from './triggerGuardBreakpoint.js';
+import { trackedObject3Ds } from './trackedObject3Ds.js';
 
 controller.registerFeature('guard:Object3D');
+controller.registerFeature('debug:ghost:Object3D');
 
 export function guardObject(obj: TracedObject3D, strict: boolean, originFactory: ((component: TracedObject3D) => StyledMessage) | null = null) {
     if (!controller.isEnabled('guard:Object3D')) {
         return;
+    }
+
+    if (controller.isEnabled('debug:ghost:Object3D')) {
+        if (!trackedObject3Ds.has(obj._engine, obj)) {
+            new StyledMessage()
+                .add(`ghost Object3D (ID ${obj._objectId}) detected in guard`)
+                .print(true, ERR);
+
+            triggerGuardBreakpoint(strict);
+
+            return;
+        }
     }
 
     if (obj._objectId === -1 || obj.__wle_trace_destroyed_data || obj.__wle_trace_destroying_data) {
@@ -29,22 +43,25 @@ export function guardObject(obj: TracedObject3D, strict: boolean, originFactory:
             return;
         }
 
-        if (obj._objectId !== -1) {
-            new StyledMessage()
-                .add('unexpected reclaim; was destroyed object ')
-                .addSubMessage(path)
-                .print(true, WARN);
+        // XXX Scene.load and Scene.reset will NOT result in Object3D.destroy
+        //     being called, so we can't rely on _objectId being -1 to detect an
+        //     unexpected destroy
+        // if (obj._objectId !== -1) {
+        //     new StyledMessage()
+        //         .add('unexpected reclaim; was destroyed object ')
+        //         .addSubMessage(path)
+        //         .print(true, WARN);
 
-            if (obj.__wle_trace_destroyed_data) {
-                delete obj.__wle_trace_destroyed_data;
-            }
+        //     if (obj.__wle_trace_destroyed_data) {
+        //         delete obj.__wle_trace_destroyed_data;
+        //     }
 
-            if (obj.__wle_trace_destroying_data) {
-                delete obj.__wle_trace_destroying_data;
-            }
+        //     if (obj.__wle_trace_destroying_data) {
+        //         delete obj.__wle_trace_destroying_data;
+        //     }
 
-            return;
-        }
+        //     return;
+        // }
 
         let message;
         if (originFactory === null) {

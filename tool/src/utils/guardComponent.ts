@@ -5,12 +5,26 @@ import { guardObject } from './guardObject.js';
 import { triggerGuardBreakpoint } from './triggerGuardBreakpoint.js';
 import { addDestructionTrace } from './addDestructionTrace.js';
 import { type TracedComponent } from '../types/TracedComponent.js';
+import { trackedComponents } from './trackedComponents.js';
 
 controller.registerFeature('guard:Component');
+controller.registerFeature('debug:ghost:Component');
 
 export function guardComponent(component: TracedComponent, strict: boolean, originFactory: ((component: TracedComponent) => StyledMessage) | null = null) {
     if (!controller.isEnabled('guard:Component')) {
         return;
+    }
+
+    if (controller.isEnabled('debug:ghost:Component')) {
+        if (!trackedComponents.has(component.engine, component)) {
+            new StyledMessage()
+                .add(`ghost Component (ID ${component._id}) detected in guard`)
+                .print(true, ERR);
+
+            triggerGuardBreakpoint(strict);
+
+            return;
+        }
     }
 
     if (component.__wle_trace_destroyed_data) {
