@@ -84,10 +84,13 @@ injectMethod(Object3D.prototype, 'addComponent', {
         inAddComponent.add(obj._engine);
     },
     afterHook: (obj: TracedObject3D, _methodName: string, _args: any[], newComp: TracedComponent) => {
-        inAddComponent.delete(obj._engine);
+        const engine = obj._engine;
+        if (inAddComponent.has(engine)) {
+            inAddComponent.delete(engine);
 
-        if (newComp) {
-            guardReclaimComponent(newComp);
+            if (newComp) {
+                guardReclaimComponent(newComp);
+            }
         }
     },
     exceptionHook: (obj: TracedObject3D, _methodName: string, _args: any[], _error: unknown) => {

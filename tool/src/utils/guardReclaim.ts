@@ -183,13 +183,47 @@ export function guardReclaimObject3DRecursively(obj: TracedObject3D) {
         // XXX try to mark properties in loaded component as new if never seen
         //     before
         const ctor = comp.constructor as ComponentConstructor;
-        for (const propertyName of Object.getOwnPropertyNames(ctor.Properties)) {
-            const propertyValue = (comp as unknown as Record<string, unknown>)[propertyName];
-
-            if (propertyValue !== undefined && propertyValue !== null && typeof propertyValue === 'object') {
-                if (propertyValue instanceof Mesh) {
-                    guardReclaimMesh(comp.engine, propertyValue);
+        // XXX ctor.Properties might be missing if the component has no
+        //     properties; the array is either explicitly defined, or auto-added
+        //     when needed by the @property decorators
+        if (ctor.Properties) {
+            // XXX some native getters can crash (and this might have
+            //     side-effects), so we handle native components in a
+            //     case-by-case basis
+            switch (comp.type) {
+                case 'collision':
+                case 'view':
+                case 'input':
+                case 'light':
+                case 'animation':
+                case 'physx':
+                    // this native component is not special, no need to check
+                    // anything
+                    break;
+                case 'text':
+                    // TODO check material
+                    break;
+                case 'mesh':
+                {
+                    // TODO check material and skin
+                    const mesh = comp.mesh;
+                    if (mesh) {
+                        guardReclaimMesh(obj._engine, mesh);
+                    }
+                    break;
                 }
+                default:
+                    // js component or new native component with no special case
+                    // (which could be no-bueno, as it might crash)
+                    for (const propertyName of Object.getOwnPropertyNames(ctor.Properties)) {
+                        const propertyValue = (comp as unknown as Record<string, unknown>)[propertyName];
+
+                        if (propertyValue !== undefined && propertyValue !== null && typeof propertyValue === 'object') {
+                            if (propertyValue instanceof Mesh) {
+                                guardReclaimMesh(comp.engine, propertyValue);
+                            }
+                        }
+                    }
             }
         }
     }

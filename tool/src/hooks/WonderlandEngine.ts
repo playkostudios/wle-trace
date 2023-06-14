@@ -9,7 +9,6 @@ import { sceneDestroyCheck } from '../utils/objectDestroy.js';
 import { inSceneLoad } from '../utils/inSceneLoad.js';
 import { ERR, StyledMessage } from '../StyledMessage.js';
 import { handleScenePostReplace } from '../utils/handleScenePostReplace.js';
-import { triggerGuardBreakpoint } from '../utils/triggerGuardBreakpoint.js';
 
 controller.registerFeature('trace:emitter:WonderlandEngine.onSceneLoaded');
 
