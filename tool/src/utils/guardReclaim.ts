@@ -283,17 +283,20 @@ export function guardReclaimMesh(engine: WonderlandEngine, meshOrIdx: Mesh | num
 }
 
 export function guardReclaimTexture(engine: WonderlandEngine, textureOrId: TracedTexture | number) {
+    let texture: TracedTexture | null = null;
     let textureId: number;
-    let hadDestructionMark = false;
     if (typeof textureOrId === 'number') {
         textureId = textureOrId;
+        texture = engine.textures.get(textureId);
     } else {
         textureId = textureOrId.id;
+        texture = textureOrId;
+    }
 
-        if (textureOrId.__wle_trace_destruction_trace !== undefined) {
-            hadDestructionMark = true;
-            delete textureOrId.__wle_trace_destruction_trace;
-        }
+    let hadDestructionMark = false;
+    if (texture && texture.__wle_trace_destruction_trace !== undefined) {
+        hadDestructionMark = true;
+        delete texture.__wle_trace_destruction_trace;
     }
 
     const isValid = trackedTextures.get(engine, textureId);
