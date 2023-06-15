@@ -1,5 +1,5 @@
 import { Mesh, type ComponentConstructor, type WonderlandEngine, Texture, MaterialParamType, Material, TextComponent } from '@wonderlandengine/api';
-import { STR, StyledMessage, WARN } from '../StyledMessage.js';
+import { ERR, STR, StyledMessage, WARN } from '../StyledMessage.js';
 import { controller } from '../WLETraceController.js';
 import { origChildrenGetter, origGetComponentsMethod } from '../hooks/orig-properties.js';
 import { type TracedComponent } from '../types/TracedComponent.js';
@@ -12,6 +12,7 @@ import { trackedComponents } from './trackedComponents.js';
 import { trackedTextures } from './trackedTextures.js';
 import { getMaterialDefinition } from './getMaterialDefinition.js';
 import { trackedMaterials } from './trackedMaterials.js';
+import { type TracedTexture } from '../types/TracedTexture.js';
 
 controller.registerFeature('trace:reclaim:Object3D');
 controller.registerFeature('trace:reclaim:Component');
@@ -28,6 +29,8 @@ controller.registerFeature('trace:construction:Texture');
 controller.registerFeature('construction:Texture');
 controller.registerFeature('trace:construction:Material');
 controller.registerFeature('construction:Material');
+controller.registerFeature('debug:unexpected-reclaim:Texture');
+controller.registerFeature('trace:reclaim:Texture');
 
 export function guardReclaimComponent(comp: TracedComponent) {
     trackedComponents.add(comp.engine, comp);
@@ -279,16 +282,37 @@ export function guardReclaimMesh(engine: WonderlandEngine, meshOrIdx: Mesh | num
     triggerBreakpoint('construction:Mesh');
 }
 
-export function guardReclaimTexture(engine: WonderlandEngine, textureOrId: Texture | number) {
-    const textureId = (typeof textureOrId === 'number') ? textureOrId : textureOrId.id;
+export function guardReclaimTexture(engine: WonderlandEngine, textureOrId: TracedTexture | number) {
+    let textureId: number;
+    let hadDestructionMark = false;
+    if (typeof textureOrId === 'number') {
+        textureId = textureOrId;
+    } else {
+        textureId = textureOrId.id;
+
+        if (textureOrId.__wle_trace_destruction_trace !== undefined) {
+            hadDestructionMark = true;
+            delete textureOrId.__wle_trace_destruction_trace;
+        }
+    }
 
     const isValid = trackedTextures.get(engine, textureId);
     if (isValid === undefined) {
         trackedTextures.set(engine, textureId, true);
     } else if (!isValid) {
-        // TODO proper error logging, and check if there is texture reclaiming
-        // throw new Error('whoa!');
-        console.warn(`[wle-trace] texture reclaimed!? id ${textureId}`);
+        if (controller.isEnabled('trace:reclaim:Texture')) {
+            StyledMessage.fromTexture(textureId)
+                .add(' was reclaimed from a previously destroyed Texture')
+                .print(true);
+        }
+
+        if (!hadDestructionMark && controller.isEnabled('debug:unexpected-reclaim:Texture')) {
+            new StyledMessage()
+                .add(`unexpected reclaim for texture ID ${textureId}; no destruction trace found`)
+                .print(true, WARN);
+            debugger;
+        }
+
         trackedTextures.set(engine, textureId, true);
     } else {
         // texture already existed
