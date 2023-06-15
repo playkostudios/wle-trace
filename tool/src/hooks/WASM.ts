@@ -51,7 +51,6 @@ for (const name of Object.getOwnPropertyNames(WASM.prototype)) {
 
     const descriptor = getPropertyDescriptor(WASM.prototype, name);
     if (descriptor.value && (typeof descriptor.value) === 'function') {
-        console.debug(descriptor.value)
         injectMethod(WASM.prototype, name, {
             traceHook: controller.guardFunction(`trace:WASM.${name}`, wasmMethodTracer),
         });

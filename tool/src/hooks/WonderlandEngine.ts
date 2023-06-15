@@ -123,7 +123,6 @@ injectMethod(WonderlandEngine.prototype, '_init', {
 
             const descriptor = getPropertyDescriptor(wasm, name);
             if (descriptor.value && (typeof descriptor.value) === 'function') {
-                console.debug(descriptor.value)
                 injectMethod(wasm, name, {
                     traceHook: controller.guardFunction(`trace:WASM.${name}`, wasmMethodTracer),
                 });
