@@ -3,6 +3,8 @@ import { origChildrenGetter, origGetComponentsMethod, origNameGetter, origParent
 import { controller } from './WLETraceController.js';
 import { type TracedObject3D } from './types/TracedObject3D.js';
 import { type TracedComponent } from './types/TracedComponent.js';
+import { type TracedTexture } from './types/TracedTexture.js';
+import { type TracedMesh } from './types/TracedMesh.js';
 
 export const DEFAULT = -1;
 export const NONE = 0;
@@ -225,7 +227,7 @@ export class StyledMessage {
         return message;
     }
 
-    static fromMesh(meshOrIdx: Mesh | number) {
+    static fromMesh(meshOrIdx: TracedMesh | number) {
         if (typeof meshOrIdx !== 'number') {
             meshOrIdx = meshOrIdx._index;
         }
@@ -233,7 +235,7 @@ export class StyledMessage {
         return new StyledMessage().add(`Mesh<${meshOrIdx}>`);
     }
 
-    static fromTexture(textureOrId: Texture | number) {
+    static fromTexture(textureOrId: TracedTexture | number) {
         if (typeof textureOrId !== 'number') {
             textureOrId = textureOrId.id;
         }

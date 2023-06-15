@@ -6,7 +6,6 @@ import { triggerBreakpoint } from '../utils/triggerBreakpoint.js';
 import { triggerGuardBreakpoint } from '../utils/triggerGuardBreakpoint.js';
 
 controller.registerFeature('trace:destruction:Component');
-controller.registerFeature('destruction:Component');
 
 export function componentDestroyCheck(comp: TracedComponent) {
     if (comp.__wle_trace_destroyed_data) {

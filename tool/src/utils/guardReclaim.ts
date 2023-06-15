@@ -17,6 +17,7 @@ controller.registerFeature('trace:reclaim:Object3D');
 controller.registerFeature('trace:reclaim:Component');
 controller.registerFeature('guard:bad-reclaim:Object3D');
 controller.registerFeature('guard:bad-reclaim:Component');
+controller.registerFeature('guard:near-id-limit:Material');
 controller.registerFeature('trace:construction:Object3D');
 controller.registerFeature('construction:Object3D');
 controller.registerFeature('trace:construction:Component');
@@ -286,7 +287,9 @@ export function guardReclaimTexture(engine: WonderlandEngine, textureOrId: Textu
         trackedTextures.set(engine, textureId, true);
     } else if (!isValid) {
         // TODO proper error logging, and check if there is texture reclaiming
-        throw new Error('whoa!');
+        // throw new Error('whoa!');
+        console.warn(`[wle-trace] texture reclaimed!? id ${textureId}`);
+        trackedTextures.set(engine, textureId, true);
     } else {
         // texture already existed
         return;
@@ -315,6 +318,14 @@ export function guardReclaimMaterial(engine: WonderlandEngine, material: Materia
         }
 
         triggerBreakpoint('construction:Material');
+
+        // XXX material ID limit was around 64k at some point, so i'm assuming
+        //     the hard limit is 65535. start warning at 60k
+        if (matIdx >= 60000 && controller.isEnabled('guard:near-id-limit:Material')) {
+            new StyledMessage()
+                .add(`Material ID ${matIdx} is dangerously close to the limit (65535)`)
+                .print(true, WARN);
+        }
     }
 
     const matDefMap = getMaterialDefinition(material);

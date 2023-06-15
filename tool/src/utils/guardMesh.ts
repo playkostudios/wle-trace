@@ -2,13 +2,14 @@ import { trackedMeshes } from './trackedMeshes.js';
 import { ERR, StyledMessage, WARN } from '../StyledMessage.js';
 import { controller } from '../WLETraceController.js';
 import { triggerGuardBreakpoint } from './triggerGuardBreakpoint.js';
-import { type Mesh } from '@wonderlandengine/api';
+import { type TracedMesh } from '../types/TracedMesh.js';
+import { addDestructionTrace } from './addDestructionTrace.js';
 
 controller.registerFeature('guard:Mesh');
 
 // TODO originFactory could just be a StyledMessage instance instead of this.
 //      the argument passed to the factory is also not used anywhere
-export function guardMesh(mesh: Mesh, strict: boolean, originFactory: ((mesh: Mesh) => StyledMessage) | null = null) {
+export function guardMesh(mesh: TracedMesh, strict: boolean, originFactory: ((mesh: TracedMesh) => StyledMessage) | null = null) {
     if (!controller.isEnabled('guard:Mesh')) {
         return;
     }
@@ -25,18 +26,31 @@ export function guardMesh(mesh: Mesh, strict: boolean, originFactory: ((mesh: Me
             message.add('possible ');
         }
 
-        message
-            .add('attempt to use invalid Mesh')
-            .print(true, strict ? ERR : WARN);
+        message.add('attempt to use invalid Mesh');
 
-        triggerGuardBreakpoint(true);
+        addDestructionTrace(message, mesh.__wle_trace_destruction_trace);
+
+        message.print(true, strict ? ERR : WARN);
+
+        triggerGuardBreakpoint(strict);
+    } else if (mesh.__wle_trace_destruction_trace) {
+        let message = StyledMessage.fromMesh(mesh);
+        if (originFactory !== null) {
+            message = originFactory(mesh).addSubMessage(message);
+        }
+
+        message
+            .add(' - unsafe Mesh reuse detected; this Mesh instance was previously destroyed but the ID is valid, so this might be a use-after-destroy')
+            .print(true, WARN);
+
+        triggerGuardBreakpoint(false);
     }
 }
 
-export function strictGuardMesh(mesh: Mesh) {
+export function strictGuardMesh(mesh: TracedMesh) {
     guardMesh(mesh, true);
 }
 
-export function softGuardMesh(mesh: Mesh) {
+export function softGuardMesh(mesh: TracedMesh) {
     guardMesh(mesh, false);
 }

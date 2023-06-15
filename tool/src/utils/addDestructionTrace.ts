@@ -1,7 +1,7 @@
 import { controller } from '../WLETraceController.js';
 import { type StyledMessage } from '../StyledMessage.js';
 
-export function addDestructionTrace(message: StyledMessage, trace: string | null) {
+export function addDestructionTrace(message: StyledMessage, trace?: string | null) {
     if (!controller.isEnabled('destruction-traces')) {
         return;
     }
@@ -9,6 +9,12 @@ export function addDestructionTrace(message: StyledMessage, trace: string | null
     if (trace) {
         message.add(`. Originally destroyed in following trace:\n${trace}`);
     } else {
-        message.add('. Destruction trace not available; destruction-traces feature not enabled when destroy was called, or destruction condition was unexpected');
+        message.add('. Destruction trace not available; ');
+
+        if (trace === null) {
+            message.add('destruction-traces feature not enabled when destroy was called, or destruction condition was unexpected');
+        } else {
+            message.add('resource was destroyed in a different instance');
+        }
     }
 }
