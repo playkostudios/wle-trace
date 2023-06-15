@@ -1,4 +1,4 @@
-import { Mesh, type ComponentConstructor, type WonderlandEngine, Texture } from '@wonderlandengine/api';
+import { Mesh, type ComponentConstructor, type WonderlandEngine, Texture, MaterialParamType, Material, TextComponent } from '@wonderlandengine/api';
 import { STR, StyledMessage, WARN } from '../StyledMessage.js';
 import { controller } from '../WLETraceController.js';
 import { origChildrenGetter, origGetComponentsMethod } from '../hooks/orig-properties.js';
@@ -10,6 +10,7 @@ import { trackedMeshes } from './trackedMeshes.js';
 import { trackedObject3Ds } from './trackedObject3Ds.js';
 import { trackedComponents } from './trackedComponents.js';
 import { trackedTextures } from './trackedTextures.js';
+import { getMaterialDefinition } from './getMaterialDefinition.js';
 
 controller.registerFeature('trace:reclaim:Object3D');
 controller.registerFeature('trace:reclaim:Component');
@@ -21,6 +22,8 @@ controller.registerFeature('trace:construction:Component');
 controller.registerFeature('construction:Component');
 controller.registerFeature('trace:construction:Mesh');
 controller.registerFeature('construction:Mesh');
+controller.registerFeature('trace:construction:Texture');
+controller.registerFeature('construction:Texture');
 
 export function guardReclaimComponent(comp: TracedComponent) {
     trackedComponents.add(comp.engine, comp);
@@ -202,18 +205,25 @@ export function guardReclaimObject3DRecursively(obj: TracedObject3D) {
                     // anything
                     break;
                 case 'text':
-                    // TODO check material
-                    // TODO guess textures from material
+                {
+                    const material = (comp as TextComponent).material;
+                    if (material) {
+                        guardReclaimMaterial(obj._engine, material)
+                    }
                     break;
+                }
                 case 'mesh':
                 {
-                    // TODO check material and skin
+                    // TODO check skin
                     const mesh = comp.mesh;
                     if (mesh) {
                         guardReclaimMesh(obj._engine, mesh);
                     }
 
-                    // TODO guess textures from material
+                    const material: Material | null = comp.material;
+                    if (material) {
+                        guardReclaimMaterial(obj._engine, material);
+                    }
                     break;
                 }
                 default:
@@ -266,7 +276,7 @@ export function guardReclaimMesh(engine: WonderlandEngine, meshOrIdx: Mesh | num
 export function guardReclaimTexture(engine: WonderlandEngine, textureOrId: Texture | number) {
     const textureId = (typeof textureOrId === 'number') ? textureOrId : textureOrId.id;
 
-    const isValid = trackedMeshes.get(engine, textureId);
+    const isValid = trackedTextures.get(engine, textureId);
     if (isValid === undefined) {
         trackedTextures.set(engine, textureId, true);
     } else if (!isValid) {
@@ -285,6 +295,24 @@ export function guardReclaimTexture(engine: WonderlandEngine, textureOrId: Textu
     }
 
     triggerBreakpoint('construction:Texture');
+}
+
+export function guardReclaimMaterial(engine: WonderlandEngine, material: Material) {
+    // TODO track materials
+
+    const matDefMap = getMaterialDefinition(material);
+    if (matDefMap) {
+        for (const [key, def] of matDefMap) {
+            const propType = def.type.type;
+            if (propType === MaterialParamType.Sampler) {
+                // this is a texture id, reclaim it
+                const texture = (material as unknown as Record<string | symbol, Texture | null>)[key];
+                if (texture) {
+                    guardReclaimTexture(engine, texture);
+                }
+            }
+        }
+    }
 }
 
 export function guardReclaimScene(engine: WonderlandEngine) {

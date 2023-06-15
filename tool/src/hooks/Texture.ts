@@ -22,7 +22,7 @@ injectMethod(Texture.prototype, 'destroy', {
 });
 
 // auto-inject trivial Texture properties
-const PROPERTY_DENY_LIST = new Set([ 'constructor', 'destroy', 'engine' ]);
+const PROPERTY_DENY_LIST = new Set([ 'constructor', 'destroy', 'engine', 'id' ]);
 
 for (const name of Object.getOwnPropertyNames(Texture.prototype)) {
     if (PROPERTY_DENY_LIST.has(name)) {
