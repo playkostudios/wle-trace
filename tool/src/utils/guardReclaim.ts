@@ -31,6 +31,7 @@ controller.registerFeature('trace:construction:Material');
 controller.registerFeature('construction:Material');
 controller.registerFeature('debug:unexpected-reclaim:Texture');
 controller.registerFeature('trace:reclaim:Texture');
+controller.registerFeature('debug:unexpected-reclaim:Mesh');
 
 export function guardReclaimComponent(comp: TracedComponent) {
     trackedComponents.add(comp.engine, comp);
@@ -265,8 +266,12 @@ export function guardReclaimMesh(engine: WonderlandEngine, meshOrIdx: Mesh | num
     if (isValid === undefined) {
         trackedMeshes.set(engine, meshIdx, true);
     } else if (!isValid) {
-        // TODO proper error logging, and check if there is mesh reclaiming
-        throw new Error('whoa!');
+        if (controller.isEnabled('debug:unexpected-reclaim:Mesh')) {
+            new StyledMessage()
+                .add(`unexpected reclaim for mesh ID ${meshIdx}; is a newer, unsupported version of WLE/WLE API being used? Mesh instances/IDs are not supposed to be reclaimed after they are destroyed`)
+                .print(true, WARN);
+            debugger;
+        }
     } else {
         // mesh already existed
         return;
