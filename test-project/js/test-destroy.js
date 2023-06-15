@@ -1,4 +1,4 @@
-import {Component, Property} from '@wonderlandengine/api';
+import {Component, Mesh, MeshAttribute, Property} from '@wonderlandengine/api';
 
 /**
  * test-destroy
@@ -26,7 +26,13 @@ export class TestDestroy extends Component {
         deleteMode.modes[deleteMode.modeNames[deleteMode.modeIdx]]();
     }
 
+    randomVector3() {
+        return new Float32Array([ Math.random(), Math.random(), Math.random() ]);
+    }
+
     init() {
+        this.meshesToNuke = [];
+
         this.modeTypes = {
             insert: {
                 modeIdx: 0,
@@ -46,6 +52,21 @@ export class TestDestroy extends Component {
                         grandchild.addComponent('mesh', { mesh: this.mesh, material: this.okMaterial });
                         console.debug('object added');
                     },
+                    createMesh: () => {
+                        const newMesh = new Mesh(this.engine, {
+                            vertexCount: 3,
+                            indexType: null
+                        });
+                        this.meshesToNuke.push(newMesh);
+
+                        const positions = newMesh.attribute(MeshAttribute.Position);
+                        positions.set(0, this.randomVector3());
+                        positions.set(1, this.randomVector3());
+                        positions.set(2, this.randomVector3());
+
+                        const child = this.engine.scene.addObject(this.object);
+                        child.addComponent('mesh', { mesh: newMesh, material: this.badMaterial });
+                    },
                 },
             },
             delete: {
@@ -59,9 +80,23 @@ export class TestDestroy extends Component {
                     },
                     reparentGrandchildren: () => {
                         console.debug('delete all children, but reparent grandchildren');
+                        // XXX i have no idea what i was trying to do in this case...
+                        //     keeping it for now in case i remember why i wanted to test this
                         for (const child of this.object.children) {
                             child.destroy();
                         }
+                    },
+                    deleteMeshes: () => {
+                        console.debug('delete all children and nuke created meshes');
+                        for (const child of this.object.children) {
+                            child.destroy();
+                        }
+
+                        for (const mesh of this.meshesToNuke) {
+                            mesh.destroy();
+                        }
+
+                        this.meshesToNuke.length = 0;
                     },
                 },
             },
