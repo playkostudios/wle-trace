@@ -11,6 +11,7 @@ import { trackedObject3Ds } from './trackedObject3Ds.js';
 import { trackedComponents } from './trackedComponents.js';
 import { trackedTextures } from './trackedTextures.js';
 import { getMaterialDefinition } from './getMaterialDefinition.js';
+import { trackedMaterials } from './trackedMaterials.js';
 
 controller.registerFeature('trace:reclaim:Object3D');
 controller.registerFeature('trace:reclaim:Component');
@@ -24,6 +25,8 @@ controller.registerFeature('trace:construction:Mesh');
 controller.registerFeature('construction:Mesh');
 controller.registerFeature('trace:construction:Texture');
 controller.registerFeature('construction:Texture');
+controller.registerFeature('trace:construction:Material');
+controller.registerFeature('construction:Material');
 
 export function guardReclaimComponent(comp: TracedComponent) {
     trackedComponents.add(comp.engine, comp);
@@ -237,6 +240,8 @@ export function guardReclaimObject3DRecursively(obj: TracedObject3D) {
                                 guardReclaimMesh(comp.engine, propertyValue);
                             } else if (propertyValue instanceof Texture) {
                                 guardReclaimTexture(comp.engine, propertyValue);
+                            } else if (propertyValue instanceof Material) {
+                                guardReclaimMaterial(comp.engine, propertyValue);
                             }
                         }
                     }
@@ -298,7 +303,19 @@ export function guardReclaimTexture(engine: WonderlandEngine, textureOrId: Textu
 }
 
 export function guardReclaimMaterial(engine: WonderlandEngine, material: Material) {
-    // TODO track materials
+    const matIdx = material._index;
+    if (!trackedMaterials.has(engine, matIdx)) {
+        trackedMaterials.add(engine, matIdx);
+
+        if (controller.isEnabled('trace:construction:Material')) {
+            new StyledMessage()
+                .add('creating Material ')
+                .addSubMessage(StyledMessage.fromMaterial(matIdx))
+                .print(true);
+        }
+
+        triggerBreakpoint('construction:Material');
+    }
 
     const matDefMap = getMaterialDefinition(material);
     if (matDefMap) {

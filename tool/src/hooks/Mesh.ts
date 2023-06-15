@@ -4,7 +4,7 @@ import { getPropertyDescriptor } from '../inject/getPropertyDescriptor.js';
 import { injectAccessor } from '../inject/injectAccessor.js';
 import { injectMethod } from '../inject/injectMethod.js';
 import { traceValueMethod, traceValueProperty, traceValueSet } from '../utils/trace.js';
-import { guardMesh } from '../utils/guardMesh.js';
+import { strictGuardMesh } from '../utils/guardMesh.js';
 import { trackedMeshes } from '../utils/trackedMeshes.js';
 
 controller.registerFeature('trace:destruction:Mesh');
@@ -35,7 +35,7 @@ for (const name of Object.getOwnPropertyNames(Mesh.prototype)) {
         if (descriptor.get) {
             getterOptions = {
                 traceHook: controller.guardFunction(`trace:get:Mesh.${name}`, traceValueProperty),
-                beforeHook: guardMesh,
+                beforeHook: strictGuardMesh,
             };
         }
 
@@ -43,7 +43,7 @@ for (const name of Object.getOwnPropertyNames(Mesh.prototype)) {
         if (descriptor.set) {
             setterOptions = {
                 traceHook: controller.guardFunction(`trace:set:Mesh.${name}`, traceValueSet),
-                beforeHook: guardMesh,
+                beforeHook: strictGuardMesh,
             };
         }
 
@@ -51,7 +51,7 @@ for (const name of Object.getOwnPropertyNames(Mesh.prototype)) {
     } else {
         injectMethod(Mesh.prototype, name, {
             traceHook: controller.guardFunction(`trace:Mesh.${name}`, traceValueMethod),
-            beforeHook: guardMesh,
+            beforeHook: strictGuardMesh,
         });
     }
 }

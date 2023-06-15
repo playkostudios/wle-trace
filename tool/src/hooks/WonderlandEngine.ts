@@ -1,6 +1,6 @@
-import { type WASM, WonderlandEngine } from '@wonderlandengine/api';
+import { type WASM, WonderlandEngine, Material } from '@wonderlandengine/api';
 import { injectMethod } from '../inject/injectMethod.js';
-import { guardReclaimMesh, guardReclaimScene, guardReclaimTexture } from '../utils/guardReclaim.js';
+import { guardReclaimMaterial, guardReclaimMesh, guardReclaimScene, guardReclaimTexture } from '../utils/guardReclaim.js';
 import { controller } from '../WLETraceController.js';
 import { getPropertyDescriptor } from '../inject/getPropertyDescriptor.js';
 import { wasmMethodTracer } from '../utils/wasmMethodTracer.js';
@@ -11,6 +11,7 @@ import { ERR, StyledMessage } from '../StyledMessage.js';
 import { handleScenePostReplace } from '../utils/handleScenePostReplace.js';
 
 controller.registerFeature('trace:emitter:WonderlandEngine.onSceneLoaded');
+controller.registerFeature('debug:dummy-material-ctor-crash');
 
 // XXX _wl_ methods (not _wljs_) are only added after loadRuntime is called. to
 //     hook them we have to hook into an init function AND THEN inject to those
@@ -75,8 +76,45 @@ injectMethod(WonderlandEngine.prototype, '_init', {
             },
         });
 
+        const materialCreateCloneAfterHook = (_wasm: WASM, _methodName: string, _args: any[], materialIdx: number) => {
+            if (materialIdx >= 0) {
+                // HACK we end up creating 2 Material instances, which is
+                //      not ideal, but there is no clean way; it would
+                //      require overriding the constructor, which has nasty
+                //      side-effects. this will also create an unnecessary
+                //      trace for the WASM material definitions getter call
+                let material = null;
+                try {
+                    material = new Material(engine, materialIdx);
+                } catch (err) {
+                    if (controller.isEnabled('debug:dummy-material-ctor-crash')) {
+                        console.error(err);
+                        new StyledMessage()
+                            .add('dummy material creation failed')
+                            .print(true, ERR);
+
+                        debugger;
+                    }
+                }
+
+                if (material) {
+                    guardReclaimMaterial(engine, material);
+                }
+            }
+        };
+
+        injectMethod(wasm, '_wl_material_create', {
+            traceHook: controller.guardFunction('trace:WASM._wl_material_create', wasmMethodTracer),
+            afterHook: materialCreateCloneAfterHook
+        });
+
+        injectMethod(wasm, '_wl_material_clone', {
+            traceHook: controller.guardFunction('trace:WASM._wl_material_clone', wasmMethodTracer),
+            afterHook: materialCreateCloneAfterHook
+        });
+
         // auto-inject trivial internal calls
-        const PROPERTY_DENY_LIST = new Set([ '_wl_mesh_create', '_wl_renderer_addImage', '_wl_load_scene_bin' ]);
+        const PROPERTY_DENY_LIST = new Set([ '_wl_mesh_create', '_wl_renderer_addImage', '_wl_load_scene_bin', '_wl_material_create', '_wl_material_clone' ]);
 
         for (const name of Object.getOwnPropertyNames(wasm)) {
             if (PROPERTY_DENY_LIST.has(name)) {

@@ -69,23 +69,21 @@ export function guardObject(obj: TracedObject3D, strict: boolean, originFactory:
             message = originFactory(obj).addSubMessage(path);
         }
 
-        const style = strict ? ERR : WARN;
-
-        message.add(' - ', style);
+        message.add(' - ');
 
         if (!strict) {
-            message.add('possible ', style);
+            message.add('possible ');
         }
 
-        message.add('use-after-destroy detected', style);
+        message.add('use-after-destroy detected');
 
         if (obj.__wle_trace_destroying_data) {
-            message.add('; accessed while Object3D is being destroyed', style);
+            message.add('; accessed while Object3D is being destroyed');
         }
 
         addDestructionTrace(message, destroyTrace);
 
-        message.print(true, style);
+        message.print(true, strict ? ERR : WARN);
 
         triggerGuardBreakpoint(strict);
     }

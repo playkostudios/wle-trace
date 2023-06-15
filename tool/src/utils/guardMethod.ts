@@ -1,10 +1,13 @@
-import { Component, Object3D } from '@wonderlandengine/api';
+import { Component, Material, Mesh, Object3D, Texture } from '@wonderlandengine/api';
 import { controller } from '../WLETraceController.js';
 import { guardObject } from './guardObject.js';
 import { guardComponent } from './guardComponent.js';
 import { StyledMessage } from '../StyledMessage.js';
 import { type TracedComponent } from '../types/TracedComponent.js';
 import { type TracedObject3D } from '../types/TracedObject3D.js';
+import { guardMesh } from './guardMesh.js';
+import { guardTexture } from './guardTexture.js';
+import { guardMaterial } from './guardMaterial.js';
 
 controller.registerFeature('guard:methods');
 
@@ -33,6 +36,12 @@ function guardMethod(isObject: boolean, objOrComp: TracedComponent | TracedObjec
                 guardObject(arg as unknown as TracedObject3D, strict, originFactoryBind.bind(null, idx));
             } else if (arg instanceof Component) {
                 guardComponent(arg as unknown as TracedComponent, strict, originFactoryBind.bind(null, idx));
+            } else if (arg instanceof Mesh) {
+                guardMesh(arg, strict, originFactoryBind.bind(null, idx));
+            } else if (arg instanceof Texture) {
+                guardTexture(arg, strict, originFactoryBind.bind(null, idx));
+            } else if (arg instanceof Material) {
+                guardMaterial(arg, strict, originFactoryBind.bind(null, idx));
             }
         }
 

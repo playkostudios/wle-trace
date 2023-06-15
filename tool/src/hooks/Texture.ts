@@ -5,7 +5,7 @@ import { injectAccessor } from '../inject/injectAccessor.js';
 import { injectMethod } from '../inject/injectMethod.js';
 import { traceValueMethod, traceValueProperty, traceValueSet } from '../utils/trace.js';
 import { trackedTextures } from '../utils/trackedTextures.js';
-import { guardTexture } from '../utils/guardTexture.js';
+import { strictGuardTexture } from '../utils/guardTexture.js';
 
 controller.registerFeature('trace:destruction:Texture');
 controller.registerFeature('destruction:Texture');
@@ -35,7 +35,7 @@ for (const name of Object.getOwnPropertyNames(Texture.prototype)) {
         if (descriptor.get) {
             getterOptions = {
                 traceHook: controller.guardFunction(`trace:get:Texture.${name}`, traceValueProperty),
-                beforeHook: guardTexture,
+                beforeHook: strictGuardTexture,
             };
         }
 
@@ -43,7 +43,7 @@ for (const name of Object.getOwnPropertyNames(Texture.prototype)) {
         if (descriptor.set) {
             setterOptions = {
                 traceHook: controller.guardFunction(`trace:set:Texture.${name}`, traceValueSet),
-                beforeHook: guardTexture,
+                beforeHook: strictGuardTexture,
             };
         }
 
@@ -51,7 +51,7 @@ for (const name of Object.getOwnPropertyNames(Texture.prototype)) {
     } else {
         injectMethod(Texture.prototype, name, {
             traceHook: controller.guardFunction(`trace:Texture.${name}`, traceValueMethod),
-            beforeHook: guardTexture,
+            beforeHook: strictGuardTexture,
         });
     }
 }
