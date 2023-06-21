@@ -425,7 +425,7 @@ export class StyledMessage {
         }
     }
 
-    print(trace = false, logLevel: number = NONE, prefix = 'wle-trace') {
+    preparePrint(logLevel: number = NONE, prefix = 'wle-trace') {
         const formatParts: string[] = [];
         const argumentParts: (string | number)[] = [];
         const iMax = this.parts.length;
@@ -437,6 +437,12 @@ export class StyledMessage {
 
         formatParts.unshift(`%c[${prefix}${LOG_LEVEL_TAGS[logLevel]}] `);
         argumentParts.unshift(formatParts.join(''), STYLES[logLevel]);
+
+        return argumentParts;
+    }
+
+    print(trace = false, logLevel: number = NONE, prefix = 'wle-trace') {
+        const argumentParts = this.preparePrint(logLevel, prefix);
 
         // XXX console.error and console.warn creates too much lag because it
         //     auto-expands, so it's not used

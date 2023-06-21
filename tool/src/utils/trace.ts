@@ -1,4 +1,5 @@
 import { StyledMessage } from '../StyledMessage.js';
+import { controller } from '../WLETraceController.js';
 import { type TracedComponent } from '../types/TracedComponent.js';
 import { type TracedObject3D } from '../types/TracedObject3D.js';
 import { inAddComponent } from './inAddComponent.js';
@@ -8,9 +9,39 @@ import { inAddComponent } from './inAddComponent.js';
 // example:
 // [wle-trace] Grand-parent/Parent[0]/Common Name[3]:component-name[7]::destroy()
 
+controller.registerFeature('trace-sentinel');
+
+const messageAccum: Array<any[]> = [];
+window.addEventListener('error', (err) => {
+    if (controller.isEnabled('trace-sentinel')) {
+        console.error('[wle-trace] trace sentinel triggered by unhandled exception:', err);
+        const msgCount = messageAccum.length;
+        console.error(`[wle-trace] last ${msgCount} traced calls:`);
+
+        for (const argumentParts of messageAccum) {
+            console.debug(...argumentParts);
+        }
+
+        messageAccum.length = 0;
+        debugger;
+    }
+})
+
+function traceMessage(message: StyledMessage) {
+    if (controller.isEnabled('trace-sentinel')) {
+        if (messageAccum.length === 100) {
+            messageAccum.shift();
+        }
+
+        messageAccum.push(message.preparePrint());
+    } else {
+        messageAccum.length = 0;
+        message.print(true);
+    }
+}
+
 export function traceObject(object: TracedObject3D) {
-    StyledMessage.fromObject3D(object)
-        .print(true);
+    traceMessage(StyledMessage.fromObject3D(object));
 }
 
 export function traceObjectMethod(object: TracedObject3D, methodName: string, args: any[]) {
@@ -27,25 +58,23 @@ export function traceObjectMethod(object: TracedObject3D, methodName: string, ar
         message.addSubMessage(StyledMessage.fromValue(arg));
     }
 
-    message.add(')').print(true);
+    traceMessage(message.add(')'));
 }
 
 export function traceObjectProperty(object: TracedObject3D, propertyName: string) {
-    StyledMessage.fromObject3D(object)
-        .add(`::${propertyName}`)
-        .print(true);
+    traceMessage(StyledMessage.fromObject3D(object).add(`::${propertyName}`));
 }
 
 export function traceObjectSet(object: TracedObject3D, propertyName: string, args: any[]) {
-    StyledMessage.fromObject3D(object)
-        .add(`::${propertyName} = `)
-        .addSubMessage(StyledMessage.fromValue(args[0]))
-        .print(true);
+    traceMessage(
+        StyledMessage.fromObject3D(object)
+            .add(`::${propertyName} = `)
+            .addSubMessage(StyledMessage.fromValue(args[0]))
+    );
 }
 
 export function traceComponent(component: TracedComponent) {
-    StyledMessage.fromComponent(component)
-        .print(true);
+    traceMessage(StyledMessage.fromComponent(component));
 }
 
 export function traceComponentMethod(component: TracedComponent, methodName: string, args: any[]) {
@@ -62,20 +91,21 @@ export function traceComponentMethod(component: TracedComponent, methodName: str
         message.addSubMessage(StyledMessage.fromValue(arg));
     }
 
-    message.add(')').print(true);
+    traceMessage(message.add(')'));
 }
 
 export function traceComponentProperty(component: TracedComponent, propertyName: string) {
-    StyledMessage.fromComponent(component)
-        .add(`::${propertyName}`)
-        .print(true);
+    traceMessage(
+        StyledMessage.fromComponent(component).add(`::${propertyName}`)
+    );
 }
 
 export function traceComponentSet(component: TracedComponent, propertyName: string, args: any[]) {
-    StyledMessage.fromComponent(component)
-        .add(`::${propertyName} = `)
-        .addSubMessage(StyledMessage.fromValue(args[0]))
-        .print(true);
+    traceMessage(
+        StyledMessage.fromComponent(component)
+            .add(`::${propertyName} = `)
+            .addSubMessage(StyledMessage.fromValue(args[0]))
+    );
 }
 
 export function traceComponentSetIAC(component: TracedComponent, propertyName: string, args: any[]) {
@@ -85,8 +115,7 @@ export function traceComponentSetIAC(component: TracedComponent, propertyName: s
 }
 
 export function traceValue(value: unknown) {
-    StyledMessage.fromValue(value)
-        .print(true);
+    traceMessage(StyledMessage.fromValue(value));
 }
 
 export function traceValueMethod(value: unknown, methodName: string, args: any[]) {
@@ -103,20 +132,19 @@ export function traceValueMethod(value: unknown, methodName: string, args: any[]
         message.addSubMessage(StyledMessage.fromValue(arg));
     }
 
-    message.add(')').print(true);
+    traceMessage(message.add(')'));
 }
 
 export function traceValueProperty(value: unknown, propertyName: string) {
-    StyledMessage.fromValue(value)
-        .add(`::${propertyName}`)
-        .print(true);
+    traceMessage(StyledMessage.fromValue(value).add(`::${propertyName}`));
 }
 
 export function traceValueSet(value: unknown, propertyName: string, args: any[]) {
-    StyledMessage.fromValue(value)
-        .add(`::${propertyName} = `)
-        .addSubMessage(StyledMessage.fromValue(args[0]))
-        .print(true);
+    traceMessage(
+        StyledMessage.fromValue(value)
+            .add(`::${propertyName} = `)
+            .addSubMessage(StyledMessage.fromValue(args[0]))
+    );
 }
 
 export function makeGlobalObjMethodTracer(globalObjName: string) {
@@ -134,24 +162,25 @@ export function makeGlobalObjMethodTracer(globalObjName: string) {
             message.addSubMessage(StyledMessage.fromValue(arg));
         }
 
-        message.add(')').print(true);
+        traceMessage(message.add(')'));
     }
 }
 
 export function makeGlobalObjPropertyTracer(globalObjName: string) {
     return function(_globalObj: unknown, propertyName: string) {
-        new StyledMessage()
-            .add(`${globalObjName}::${propertyName}`)
-            .print(true);
+        traceMessage(
+            new StyledMessage().add(`${globalObjName}::${propertyName}`)
+        );
     }
 }
 
 
 export function makeGlobalObjSetTracer(globalObjName: string) {
     return function(_globalObj: unknown, propertyName: string, args: any[]) {
-        new StyledMessage()
-            .add(`${globalObjName}::${propertyName} = `)
-            .addSubMessage(StyledMessage.fromValue(args[0]))
-            .print(true);
+        traceMessage(
+            new StyledMessage()
+                .add(`${globalObjName}::${propertyName} = `)
+                .addSubMessage(StyledMessage.fromValue(args[0]))
+        );
     }
 }
