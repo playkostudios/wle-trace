@@ -78,14 +78,6 @@ export class TestDestroy extends Component {
                             child.destroy();
                         }
                     },
-                    reparentGrandchildren: () => {
-                        console.debug('delete all children, but reparent grandchildren');
-                        // XXX i have no idea what i was trying to do in this case...
-                        //     keeping it for now in case i remember why i wanted to test this
-                        for (const child of this.object.children) {
-                            child.destroy();
-                        }
-                    },
                     deleteMeshes: () => {
                         console.debug('delete all children and nuke created meshes');
                         for (const child of this.object.children) {
