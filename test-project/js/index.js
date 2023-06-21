@@ -11,7 +11,7 @@
  *     - `wle:auto-benchmark:start` and `wle:auto-benchmark:end`: Append the benchmarking code
  */
 
-import wleTrace from 'wle-trace';
+import wleTrace from '@playkostudios/wle-trace';
 
 let firstLoad = true;
 wleTrace.waitForInjections(() => {

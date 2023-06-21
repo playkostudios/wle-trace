@@ -17,6 +17,6 @@
     "gl-matrix": "^3.4.3"
   },
   "devDependencies": {
-    "wle-trace": "file:../tool"
+    "@playkostudios/wle-trace": "file:../tool"
   }
 }
