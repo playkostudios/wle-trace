@@ -9,6 +9,9 @@
     "build": "tsc",
     "dev": "tsc --watch"
   },
+  "files": [
+    "dist"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/playkostudios/wle-trace.git"
