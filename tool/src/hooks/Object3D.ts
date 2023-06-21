@@ -29,6 +29,8 @@ function guardObjectAndSetter(obj: TracedObject3D, setterName: string, args: any
 //     is used to prevent confusion, otherwise there is a <destroying object;...
 //     prefix
 function traceDestroyMethod(object: TracedObject3D, _methodName: string, args: any[]) {
+    // TODO wtfMessage should be done as a debug feature like in other places
+    //      where we log/breakpoint at unexpected conditions
     let wtfMessage = null;
     let path;
     if (object.__wle_trace_destroying_data) {
