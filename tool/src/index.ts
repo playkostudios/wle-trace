@@ -20,4 +20,3 @@ declare global {
 globalThis.wleTrace = controller;
 
 export default controller;
-export * from './StyledMessage.js';
