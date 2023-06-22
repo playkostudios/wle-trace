@@ -1,10 +1,12 @@
 import { WLETraceController } from '../WLETraceController.js';
+import { injectTypedArrayRecorder } from './TypedArray.js';
 import { injectWASMRecorder } from './WASM.js';
 import { injectWonderlandEngineRecorder } from './WonderlandEngine.js';
 
 export async function recordWLETrace(): Promise<WLETraceController> {
     const controller = new WLETraceController(true);
 
+    injectTypedArrayRecorder(controller);
     injectWASMRecorder(controller);
     await injectWonderlandEngineRecorder(controller);
 

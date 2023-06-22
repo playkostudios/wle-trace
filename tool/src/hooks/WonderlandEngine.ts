@@ -10,13 +10,14 @@ import { ERR, StyledMessage } from '../StyledMessage.js';
 import { handleScenePostReplace } from '../utils/handleScenePostReplace.js';
 import { makeGlobalObjMethodTracer } from '../utils/trace.js';
 
-function injectGenericWonderlandEngine(injectCallback: (engine: WonderlandEngine) => void): Promise<WonderlandEngine> {
+function injectGenericWonderlandEngine(controller: WLETraceController, injectCallback: (engine: WonderlandEngine) => void): Promise<WonderlandEngine> {
     return new Promise((resolve, _reject) => {
         // XXX _wl_ methods (not _wljs_) are only added after loadRuntime is
         //     called. to hook them we have to hook into an init function AND
         //     THEN inject to those now-present methods
         injectMethod(WonderlandEngine.prototype, '_init', {
             beforeHook: (engine: WonderlandEngine, _methodName: string, _args: any[]) => {
+                controller.engine = engine;
                 injectCallback(engine);
 
                 // mark injections as done (some features will be auto-toggled
@@ -29,7 +30,7 @@ function injectGenericWonderlandEngine(injectCallback: (engine: WonderlandEngine
 }
 
 export async function injectWonderlandEngineRecorder(controller: WLETraceController) {
-    await injectGenericWonderlandEngine((engine: WonderlandEngine) => {
+    await injectGenericWonderlandEngine(controller, (engine: WonderlandEngine) => {
         const wasm = engine.wasm;
 
         for (const name of Object.getOwnPropertyNames(wasm)) {
@@ -62,7 +63,7 @@ export async function injectWonderlandEngine(controller: WLETraceController): Pr
     controller.registerFeature('trace:emitter:WonderlandEngine.onSceneLoaded');
     controller.registerFeature('debug:dummy-material-ctor-crash');
 
-    const engine = await injectGenericWonderlandEngine((engine: WonderlandEngine) => {
+    const engine = await injectGenericWonderlandEngine(controller, (engine: WonderlandEngine) => {
         const wasm = engine.wasm;
 
         engine.onSceneLoaded.add(() => {

@@ -1,3 +1,4 @@
+import { type TypedArray, type WonderlandEngine } from '@wonderlandengine/api';
 import { triggerBreakpoint } from './utils/triggerBreakpoint.js';
 
 export type FeatureToggleHandler = (id: string, isOn: boolean) => void;
@@ -18,6 +19,7 @@ export class WLETraceController {
     replayBuffer: ArrayBuffer[] = [];
     stringDictionary = new Array<string>();
     sentinelHandlers = new Array<() => void>();
+    engine: WonderlandEngine | null = null;
 
     constructor(private recording = false) {
         // -- common features --
@@ -180,58 +182,40 @@ export class WLETraceController {
         // prepare header of method call(back). format:
         // bytes; desc
         // -----------
+        // 1    ; eventType (0 if callback, 1 if call, 2 if dma (not used here))
         // 4    ; methodIdx
-        // 1    ; isCall
         // 1    ; argCount
-        // (1)+ ; argType
         const argCount = args.length;
-        const headerBuffer = new ArrayBuffer(6 + argCount);
+        const headerBuffer = new ArrayBuffer(6);
         const headerView8 = new Uint8Array(headerBuffer);
         const headerViewMethodIdx = new Uint32Array(headerBuffer, 0, 1);
 
+        // XXX temporarily write the 32-bit uint to the beginning, but then
+        //     shift right by 1 byte (we can only have offsets multiple of 4 for
+        //     uint32)
         headerViewMethodIdx[0] = methodIdx;
-        headerView8[4] = isCall ? 1 : 0;
+        headerView8[4] = headerView8[3];
+        headerView8[3] = headerView8[2];
+        headerView8[2] = headerView8[1];
+        headerView8[1] = headerView8[0];
+
+        headerView8[0] = isCall ? 1 : 0;
         headerView8[5] = argCount;
 
         this.replayBuffer.push(headerBuffer);
 
-        // encode arguments (and argument types into header)
+        // encode arguments
+        const argsBuffer = new Float64Array(argCount);
+        this.replayBuffer.push(argsBuffer);
+
         for (let i = 0; i < argCount; i++) {
             const arg = args[i];
-            const typeofArg = typeof arg;
-            let encType: number;
-
-            switch (typeofArg) {
-                case 'undefined':
-                    encType = ArgType.Undefined;
-                    break;
-                case 'object':
-                    if (arg === null) {
-                        encType = ArgType.Null;
-                    } else {
-                        debugger;
-                        throw new Error('Unexpected object argument in WASM call');
-                    }
-                    break;
-                case 'number':
-                {
-                    encType = ArgType.Number;
-                    this.replayBuffer.push(new Float64Array([ arg ]));
-                    break;
-                }
-                case 'string':
-                {
-                    encType = ArgType.String;
-                    this.replayBuffer.push(new Uint32Array([ this._getStringIdx(arg) ]));
-                    break;
-                }
-                default:
-                    console.debug(arg);
-                    debugger;
-                    throw new Error('NIY')
+            if (typeof arg !== 'number') {
+                debugger;
+                throw new Error('Unexpected non-number argument in WASM call');
             }
 
-            headerView8[i + 6] = encType;
+            argsBuffer[i] = arg;
         }
     }
 
@@ -241,6 +225,42 @@ export class WLETraceController {
 
     recordWASMCallback(methodName: string, args: any[]) {
         this._recordWASMGeneric(false, methodName, args);
+    }
+
+    recordWASMDMA(dst: ArrayBuffer | TypedArray, src: ArrayBuffer | TypedArray, offset: number) {
+        if (!this.recording || this.engine === null) {
+            return;
+        }
+
+        // verify that destination is the heap
+        let byteLength = Math.min(src.byteLength, dst.byteLength - offset);
+        if (ArrayBuffer.isView(dst)) {
+            offset += dst.byteOffset;
+            dst = dst.buffer;
+        }
+
+        if (byteLength <= 0 || dst !== this.engine.wasm.HEAP8?.buffer) {
+            return;
+        }
+
+        // prepare header of dma set. format:
+        // bytes; desc
+        // -----------
+        // 1    ; eventType (0 if callback (not used here), 1 if call (not used here), 2 if dma)
+        // 4    ; offset
+        // 4    ; buffer length
+        this.replayBuffer.push(new Uint8Array([ 2 ]));
+        this.replayBuffer.push(new Uint8Array([ offset, src.byteLength ]));
+
+        // add buffer to replay buffer
+        const srcCopy = new Uint8Array(byteLength);
+        if (ArrayBuffer.isView(src)) {
+            srcCopy.set(src);
+        } else {
+            srcCopy.set(new Uint8Array(src, 0, byteLength));
+        }
+
+        this.replayBuffer.push(srcCopy);
     }
 
     stopRecording(): Blob {
