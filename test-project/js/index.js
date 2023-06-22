@@ -11,7 +11,7 @@
  *     - `wle:auto-benchmark:start` and `wle:auto-benchmark:end`: Append the benchmarking code
  */
 
-import { injectWLETrace } from '@playkostudios/wle-trace';
+import { injectWLETrace, recordWLETrace } from '@playkostudios/wle-trace';
 import {loadRuntime} from '@wonderlandengine/api';
 import * as API from '@wonderlandengine/api'; // Deprecated: Backward compatibility.
 
@@ -54,7 +54,11 @@ function testResourceManagement() {
 }
 
 function testRecord() {
-    // TODO
+    recordWLETrace().then((wleTrace) => {
+        setTimeout(() => wleTrace.stopRecordingAndDownload(), 5000);
+
+        normalPostLoad();
+    });
 }
 
 function testPlayback() {
@@ -62,8 +66,8 @@ function testPlayback() {
 }
 
 // testSentinel();
-testResourceManagement();
-// testRecord();
+// testResourceManagement();
+testRecord();
 // testPlayback();
 
 /* wle:auto-constants:start */

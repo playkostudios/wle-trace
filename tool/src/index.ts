@@ -2,4 +2,5 @@
 //     properties can be get
 import './hooks/orig-properties.js';
 export { injectWLETrace } from './hooks/injectWLETrace.js';
+export { recordWLETrace } from './hooks/recordWLETrace.js';
 export type { WLETraceController } from './WLETraceController.js';

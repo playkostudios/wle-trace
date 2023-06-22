@@ -9,6 +9,25 @@ import { guardReclaimComponent } from '../utils/guardReclaim.js';
 import { type WLETraceController } from '../WLETraceController.js';
 import { makeGlobalObjMethodTracer } from '../utils/trace.js';
 
+export function injectWASMRecorder(controller: WLETraceController) {
+    const PROPERTY_DENY_LIST = new Set([ 'constructor', '_setEngine', '_registerComponent' ]);
+
+    for (const name of Object.getOwnPropertyNames(WASM.prototype)) {
+        if (PROPERTY_DENY_LIST.has(name)) {
+            continue;
+        }
+
+        const descriptor = getPropertyDescriptor(WASM.prototype, name);
+        if (descriptor.value && (typeof descriptor.value) === 'function') {
+            injectMethod(WASM.prototype, name, {
+                beforeHook: (_wasm: WASM, methodName: string, args: any[]) => {
+                    controller.recordWASMCall(methodName, args);
+                },
+            });
+        }
+    }
+}
+
 export function injectWASM(controller: WLETraceController) {
     const wasmMethodTracer = makeGlobalObjMethodTracer(controller, 'WASM');
 

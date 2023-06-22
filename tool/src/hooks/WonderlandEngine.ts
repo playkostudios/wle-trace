@@ -29,17 +29,30 @@ function injectGenericWonderlandEngine(injectCallback: (engine: WonderlandEngine
 }
 
 export async function injectWonderlandEngineRecorder(controller: WLETraceController) {
-    const wasmMethodTracer = makeGlobalObjMethodTracer(controller, 'WASM');
-
     await injectGenericWonderlandEngine((engine: WonderlandEngine) => {
         const wasm = engine.wasm;
 
+        const PROPERTY_DENY_LIST = new Set([ 'addFunction' ]);
+
         for (const name of Object.getOwnPropertyNames(wasm)) {
+            if (PROPERTY_DENY_LIST.has(name)) {
+                continue;
+            }
+
             const descriptor = getPropertyDescriptor(wasm, name);
             if (descriptor.value && (typeof descriptor.value) === 'function') {
-                injectMethod(wasm, name, {
-                    traceHook: controller.guardFunction(`trace:WASM.${name}`, wasmMethodTracer),
-                });
+                let beforeHook;
+                if (name.startsWith('_wljs_')) {
+                    beforeHook = (_wasm: WASM, methodName: string, args: any[]) => {
+                        controller.recordWASMCallback(methodName, args);
+                    };
+                } else {
+                    beforeHook = (_wasm: WASM, methodName: string, args: any[]) => {
+                        controller.recordWASMCall(methodName, args);
+                    };
+                }
+
+                injectMethod(wasm, name, { beforeHook });
             }
         }
     });

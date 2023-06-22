@@ -2,14 +2,24 @@ import { triggerBreakpoint } from './utils/triggerBreakpoint.js';
 
 export type FeatureToggleHandler = (id: string, isOn: boolean) => void;
 
+enum ArgType {
+    Undefined = 0,
+    Null = 1,
+    Number = 2,
+    String = 3,
+    Buffer = 4,
+};
+
 export class WLETraceController {
     features = new Map<string, boolean>();
     _featureToggleHandlers = new Map<string, Array<FeatureToggleHandler>>();
     queuedTraces = new Array<any[]>();
     maxQueuedTraces = 100;
-    replayBuffer = new Array<Uint8Array>();
+    replayBuffer: ArrayBuffer[] = [];
+    stringDictionary = new Array<string>();
+    sentinelHandlers = new Array<() => void>();
 
-    constructor() {
+    constructor(private recording = false) {
         // -- common features --
         // StyledMessage
         this.registerFeature('fast-trace');
@@ -149,8 +159,117 @@ export class WLETraceController {
         this.queuedTraces.length = 0;
     }
 
-    recordWASMCall(_methodName: string, ..._args: any[]) {
-        // TODO
+    _getStringIdx(str: string): number {
+        let idx = this.stringDictionary.indexOf(str);
+        if (idx < 0) {
+            idx = this.stringDictionary.length;
+            this.stringDictionary.push(str);
+        }
+
+        return idx;
+    }
+
+    _recordWASMGeneric(isCall: boolean, methodName: string, args: any[]) {
+        if (!this.recording) {
+            return;
+        }
+
+        // get index of method name
+        const methodIdx = this._getStringIdx(methodName);
+
+        // prepare header of method call(back). format:
+        // bytes; desc
+        // -----------
+        // 4    ; methodIdx
+        // 1    ; isCall
+        // 1    ; argCount
+        // (1)+ ; argType
+        const argCount = args.length;
+        const headerBuffer = new ArrayBuffer(6 + argCount);
+        const headerView8 = new Uint8Array(headerBuffer);
+        const headerViewMethodIdx = new Uint32Array(headerBuffer, 0, 1);
+
+        headerViewMethodIdx[0] = methodIdx;
+        headerView8[4] = isCall ? 1 : 0;
+        headerView8[5] = argCount;
+
+        this.replayBuffer.push(headerBuffer);
+
+        // encode arguments (and argument types into header)
+        for (let i = 0; i < argCount; i++) {
+            const arg = args[i];
+            const typeofArg = typeof arg;
+            let encType: number;
+
+            switch (typeofArg) {
+                case 'undefined':
+                    encType = ArgType.Undefined;
+                    break;
+                case 'object':
+                    if (arg === null) {
+                        encType = ArgType.Null;
+                    } else {
+                        debugger;
+                        throw new Error('Unexpected object argument in WASM call');
+                    }
+                    break;
+                case 'number':
+                {
+                    encType = ArgType.Number;
+                    this.replayBuffer.push(new Float64Array([ arg ]));
+                    break;
+                }
+                case 'string':
+                {
+                    encType = ArgType.String;
+                    this.replayBuffer.push(new Uint32Array([ this._getStringIdx(arg) ]));
+                    break;
+                }
+                default:
+                    console.debug(arg);
+                    debugger;
+                    throw new Error('NIY')
+            }
+
+            headerView8[i + 6] = encType;
+        }
+    }
+
+    recordWASMCall(methodName: string, args: any[]) {
+        this._recordWASMGeneric(true, methodName, args);
+    }
+
+    recordWASMCallback(methodName: string, args: any[]) {
+        this._recordWASMGeneric(false, methodName, args);
+    }
+
+    stopRecording(): ArrayBuffer[] {
+        if (!this.recording) {
+            throw new Error("Can't stop recording; not recording");
+        }
+
+        this.recording = false;
+
+        console.debug('[wle-trace CONTROLLER] recording stopped');
+
+        const chunks: ArrayBuffer[] = [];
+
+        // TODO encode string dictionary to utf8 chunks
+        this.stringDictionary.length = 0;
+
+        chunks.push(...this.replayBuffer);
+        this.replayBuffer.length = 0;
+
+        return chunks;
+    }
+
+    stopRecordingAndDownload() {
+        const recordedData = this.stopRecording();
+        // TODO stream chunks as a download with showSaveFilePicker
+    }
+
+    addSentinelHandler(callback: () => void) {
+        this.sentinelHandlers.push(callback);
     }
 
     triggerSentinel(reason = 'triggered manually by user') {
@@ -167,10 +286,12 @@ export class WLETraceController {
             this.clearTraceQueue();
         }
 
-        if (this.replayBuffer.length !== 0) {
-            // TODO download replay buffer
-
-            this.replayBuffer.length = 0;
+        for (const handler of this.sentinelHandlers) {
+            try {
+                handler();
+            } catch(err) {
+                console.error('[wle-trace CONTROLLER] uncaught exception is user-defined sentinel handler');
+            }
         }
 
         triggerBreakpoint(this, 'sentinel');
