@@ -57,6 +57,27 @@ export async function injectWonderlandEngineRecorder(controller: WLETraceControl
     });
 }
 
+export async function injectWonderlandEngineReplayer(controller: WLETraceController) {
+    await injectGenericWonderlandEngine(controller, (engine: WonderlandEngine) => {
+        const wasm = engine.wasm;
+
+        for (const name of Object.getOwnPropertyNames(wasm)) {
+            if (!name.startsWith('_wljs_')) {
+                continue;
+            }
+
+            const descriptor = getPropertyDescriptor(wasm, name);
+            if (descriptor.value && (typeof descriptor.value) === 'function') {
+                injectMethod(wasm, name, {
+                    beforeHook: (_wasm: WASM, methodName: string, args: any[]) => {
+                        controller.markWASMCallbackAsReplayed(methodName, args);
+                    }
+                });
+            }
+        }
+    });
+}
+
 export async function injectWonderlandEngine(controller: WLETraceController): Promise<void> {
     const wasmMethodTracer = makeGlobalObjMethodTracer(controller, 'WASM');
 

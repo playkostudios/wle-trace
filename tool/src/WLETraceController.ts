@@ -3,25 +3,23 @@ import { triggerBreakpoint } from './utils/triggerBreakpoint.js';
 
 export type FeatureToggleHandler = (id: string, isOn: boolean) => void;
 
-enum ArgType {
-    Undefined = 0,
-    Null = 1,
-    Number = 2,
-    String = 3,
-    Buffer = 4,
-};
-
 export class WLETraceController {
     features = new Map<string, boolean>();
     _featureToggleHandlers = new Map<string, Array<FeatureToggleHandler>>();
     queuedTraces = new Array<any[]>();
     maxQueuedTraces = 100;
-    replayBuffer: ArrayBuffer[] = [];
+    recordBuffer: null | ArrayBuffer[] = null;
+    replayBuffer: null | Uint8Array = null;
     stringDictionary = new Array<string>();
     sentinelHandlers = new Array<() => void>();
     engine: WonderlandEngine | null = null;
+    replayOffset = 0;
 
-    constructor(private recording = false) {
+    constructor(recording = false) {
+        if (recording) {
+            this.recordBuffer = [];
+        }
+
         // -- common features --
         // StyledMessage
         this.registerFeature('fast-trace');
@@ -172,7 +170,7 @@ export class WLETraceController {
     }
 
     _recordWASMGeneric(isCall: boolean, methodName: string, args: any[]) {
-        if (!this.recording) {
+        if (!this.recordBuffer) {
             return;
         }
 
@@ -202,11 +200,11 @@ export class WLETraceController {
         headerView8[0] = isCall ? 1 : 0;
         headerView8[5] = argCount;
 
-        this.replayBuffer.push(headerBuffer);
+        this.recordBuffer.push(headerBuffer);
 
         // encode arguments
         const argsBuffer = new Float64Array(argCount);
-        this.replayBuffer.push(argsBuffer);
+        this.recordBuffer.push(argsBuffer);
 
         for (let i = 0; i < argCount; i++) {
             const arg = args[i];
@@ -228,7 +226,7 @@ export class WLETraceController {
     }
 
     recordWASMDMA(dst: ArrayBuffer | TypedArray, src: ArrayBuffer | TypedArray, offset: number) {
-        if (!this.recording || this.engine === null) {
+        if (!this.recordBuffer || this.engine === null) {
             return;
         }
 
@@ -249,8 +247,8 @@ export class WLETraceController {
         // 1    ; eventType (0 if callback (not used here), 1 if call (not used here), 2 if dma)
         // 4    ; offset
         // 4    ; buffer length
-        this.replayBuffer.push(new Uint8Array([ 2 ]));
-        this.replayBuffer.push(new Uint8Array([ offset, src.byteLength ]));
+        this.recordBuffer.push(new Uint8Array([ 2 ]));
+        this.recordBuffer.push(new Uint8Array([ offset, src.byteLength ]));
 
         // add buffer to replay buffer
         const srcCopy = new Uint8Array(byteLength);
@@ -260,15 +258,167 @@ export class WLETraceController {
             srcCopy.set(new Uint8Array(src, 0, byteLength));
         }
 
-        this.replayBuffer.push(srcCopy);
+        this.recordBuffer.push(srcCopy);
+    }
+
+    _continueReplay() {
+        // FIXME all tmp32 is wrong! check startReplay for proper example
+        if (!this.replayBuffer || !this.engine) {
+            return;
+        }
+
+        const end = this.replayBuffer.byteLength;
+        while (this.replayOffset < end) {
+            const eventType = this.replayBuffer[this.replayOffset];
+            this.replayOffset++;
+
+            if (eventType === 0) {
+                console.debug('replay waiting for callback...');
+                return; // callback, wait for a callback-as-replayed mark
+            } else if (eventType === 1) {
+                // wasm call
+                // parse method name
+                const tmp32 = new Uint32Array(1);
+                tmp32.set(new Uint8Array(this.replayBuffer, this.replayOffset, 4));
+                const methodName = this.stringDictionary[tmp32[0]];
+                this.replayOffset += 4;
+
+                // parse arg count
+                const argCount = this.replayBuffer[this.replayOffset];
+                const args = new Array(argCount);
+                this.replayOffset++;
+
+                // parse number args
+                const argBuf = new Float64Array(argCount);
+                const argBufLen = argCount * 8;
+                argBuf.set(new Uint8Array(this.replayBuffer, this.replayOffset, argBufLen));
+                this.replayOffset += argBufLen;
+
+                for (let i = 0; i < argCount; i++) {
+                    args[i] = argBuf[i];
+                }
+
+                // do call
+                console.debug('replay call', methodName);
+                (this.engine.wasm as unknown as Record<string, (...args: any[]) => any>)[methodName](...args);
+            } else if (eventType === 2) {
+                // dma
+                const tmp32 = new Uint32Array(2);
+                tmp32.set(new Uint8Array(this.replayBuffer, this.replayOffset, 8));
+                this.replayOffset += 8;
+                const byteOffset = tmp32[0];
+                const byteLength = tmp32[1];
+                console.debug('replay dma', byteLength, 'bytes @', byteOffset);
+                this.engine.wasm.HEAPU8.set(new Uint8Array(this.replayBuffer, this.replayOffset, byteLength), byteOffset);
+                this.replayOffset += byteLength;
+            } else {
+                debugger;
+                throw new Error('unknown event type');
+            }
+        }
+
+        if (this.replayOffset >= end) {
+            // replay ended
+            this.replayBuffer = null;
+            this.stringDictionary.length = 0;
+            console.debug('[wle-trace CONTROLLER] Replay ended');
+        }
+    }
+
+    markWASMCallbackAsReplayed(methodName: string, _args: any[]) {
+        if (!this.replayBuffer || !this.engine) {
+            return;
+        }
+
+        const eventType = this.replayBuffer[this.replayOffset];
+        this.replayOffset++;
+
+        if (eventType !== 0) {
+            debugger;
+            throw new Error('Unexpected WASM callback; no callback expected');
+        }
+
+        // parse and verify method idx
+        const methodIdx = this.stringDictionary.indexOf(methodName);
+
+        // parse method name
+        const tmp32 = new Uint32Array(1);
+        tmp32.set(new Uint8Array(this.replayBuffer, this.replayOffset, 4));
+        this.replayOffset += 4;
+
+        if (methodIdx !== tmp32[0]) {
+            debugger;
+            throw new Error('Unexpected WASM callback; different method expected');
+        }
+
+        // parse arg count
+        const argCount = this.replayBuffer[this.replayOffset];
+        this.replayOffset++;
+
+        // TODO verify args
+        this.replayOffset += argCount * 8;
+
+        this._continueReplay();
+    }
+
+    startReplay(replayBuffer: Uint8Array) {
+        if (this.replayBuffer) {
+            throw new Error("Can't start replay; already replaying something");
+        }
+
+        console.debug(`[wle-trace CONTROLLER] Replay mode active (${replayBuffer.byteLength} bytes)`);
+        this.stringDictionary.length = 0;
+        this.replayBuffer = replayBuffer;
+        this.replayOffset = 4;
+
+        // parse dictionary
+        const dictSize = (new Uint32Array(replayBuffer.buffer, 0, 1))[0];
+        const tmp32 = new Uint32Array(1);
+        const tmp8 = new Uint8Array(tmp32.buffer);
+        const textDecoder = new TextDecoder();
+
+        for (let i = 0; i < dictSize; i++) {
+            tmp8.set(new Uint8Array(replayBuffer.buffer, this.replayOffset, 4));
+            const strLen = tmp32[0];
+            this.replayOffset += 4;
+            this.stringDictionary.push(textDecoder.decode(new Uint8Array(replayBuffer.buffer, this.replayOffset, strLen)));
+            this.replayOffset += strLen;
+        }
+
+        this._continueReplay();
+    }
+
+    startReplayFromUpload() {
+        const fileIn = document.createElement('input');
+        fileIn.type = 'file';
+        fileIn.style.display = 'none';
+        document.body.appendChild(fileIn);
+        fileIn.addEventListener('change', async () => {
+            const file = fileIn.files?.[0];
+            if (file) {
+                const arrayBuffer = await file.arrayBuffer();
+                this.startReplay(new Uint8Array(arrayBuffer));
+            }
+        });
+
+        fileIn.click();
+        document.body.removeChild(fileIn);
+    }
+
+    startReplayFromUploadPopup() {
+        const popup = document.createElement('button');
+        popup.textContent = 'Click to upload replay file';
+        popup.onclick = () => {
+            this.startReplayFromUpload();
+            document.body.removeChild(popup);
+        };
+        document.body.appendChild(popup);
     }
 
     stopRecording(): Blob {
-        if (!this.recording) {
+        if (!this.recordBuffer) {
             throw new Error("Can't stop recording; not recording");
         }
-
-        this.recording = false;
 
         console.debug('[wle-trace CONTROLLER] recording stopped');
 
@@ -282,9 +432,9 @@ export class WLETraceController {
             chunks.push(strBuf);
         }
 
-        chunks.push(...this.replayBuffer);
+        chunks.push(...this.recordBuffer);
         this.stringDictionary.length = 0;
-        this.replayBuffer.length = 0;
+        this.recordBuffer = null;
 
         return new Blob(chunks);
     }

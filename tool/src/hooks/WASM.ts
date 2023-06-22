@@ -36,6 +36,23 @@ export function injectWASMRecorder(controller: WLETraceController) {
     }
 }
 
+export function injectWASMReplayer(controller: WLETraceController) {
+    for (const name of Object.getOwnPropertyNames(WASM.prototype)) {
+        if (!name.startsWith('_wljs_')) {
+            continue;
+        }
+
+        const descriptor = getPropertyDescriptor(WASM.prototype, name);
+        if (descriptor.value && (typeof descriptor.value) === 'function') {
+            injectMethod(WASM.prototype, name, {
+                beforeHook: (_wasm: WASM, methodName: string, args: any[]) => {
+                    controller.markWASMCallbackAsReplayed(methodName, args);
+                }
+            });
+        }
+    }
+}
+
 export function injectWASM(controller: WLETraceController) {
     const wasmMethodTracer = makeGlobalObjMethodTracer(controller, 'WASM');
 
