@@ -10,20 +10,28 @@ import { type WLETraceController } from '../WLETraceController.js';
 import { makeGlobalObjMethodTracer } from '../utils/trace.js';
 
 export function injectWASMRecorder(controller: WLETraceController) {
-    const PROPERTY_DENY_LIST = new Set([ 'constructor', '_setEngine', '_registerComponent' ]);
+    const CALL_DENY_LIST = new Set([ '_registerComponentLegacy', '_registerComponent', '_typeIndexFor', '_typeNameFor', '_setEngine' ]);
 
     for (const name of Object.getOwnPropertyNames(WASM.prototype)) {
-        if (PROPERTY_DENY_LIST.has(name)) {
+        let isCall = !name.startsWith('_wljs_');
+        if (isCall && (CALL_DENY_LIST.has(name) || !name.startsWith('_'))) {
             continue;
         }
 
         const descriptor = getPropertyDescriptor(WASM.prototype, name);
         if (descriptor.value && (typeof descriptor.value) === 'function') {
-            injectMethod(WASM.prototype, name, {
-                beforeHook: (_wasm: WASM, methodName: string, args: any[]) => {
+            let beforeHook;
+            if (isCall) {
+                beforeHook = (_wasm: WASM, methodName: string, args: any[]) => {
                     controller.recordWASMCall(methodName, args);
-                },
-            });
+                };
+            } else {
+                beforeHook = (_wasm: WASM, methodName: string, args: any[]) => {
+                    controller.recordWASMCallback(methodName, args);
+                };
+            }
+
+            injectMethod(WASM.prototype, name, { beforeHook });
         }
     }
 }

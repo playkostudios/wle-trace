@@ -32,10 +32,8 @@ export async function injectWonderlandEngineRecorder(controller: WLETraceControl
     await injectGenericWonderlandEngine((engine: WonderlandEngine) => {
         const wasm = engine.wasm;
 
-        const PROPERTY_DENY_LIST = new Set([ 'addFunction' ]);
-
         for (const name of Object.getOwnPropertyNames(wasm)) {
-            if (PROPERTY_DENY_LIST.has(name)) {
+            if (!name.startsWith('_')) {
                 continue;
             }
 

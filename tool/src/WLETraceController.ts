@@ -243,7 +243,7 @@ export class WLETraceController {
         this._recordWASMGeneric(false, methodName, args);
     }
 
-    stopRecording(): ArrayBuffer[] {
+    stopRecording(): Blob {
         if (!this.recording) {
             throw new Error("Can't stop recording; not recording");
         }
@@ -253,19 +253,31 @@ export class WLETraceController {
         console.debug('[wle-trace CONTROLLER] recording stopped');
 
         const chunks: ArrayBuffer[] = [];
+        const textEncoder = new TextEncoder();
 
-        // TODO encode string dictionary to utf8 chunks
-        this.stringDictionary.length = 0;
+        chunks.push(new Uint32Array([ this.stringDictionary.length ]));
+        for (const str of this.stringDictionary) {
+            const strBuf = textEncoder.encode(str);
+            chunks.push(new Uint32Array([ strBuf.byteLength ]));
+            chunks.push(strBuf);
+        }
 
         chunks.push(...this.replayBuffer);
+        this.stringDictionary.length = 0;
         this.replayBuffer.length = 0;
 
-        return chunks;
+        return new Blob(chunks);
     }
 
     stopRecordingAndDownload() {
-        const recordedData = this.stopRecording();
-        // TODO stream chunks as a download with showSaveFilePicker
+        const blob = this.stopRecording();
+
+        const blobURL = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobURL;
+        link.download = `wle-trace-recording-${Date.now()}.bin`;
+        link.click();
+        window.URL.revokeObjectURL(blobURL);
     }
 
     addSentinelHandler(callback: () => void) {
