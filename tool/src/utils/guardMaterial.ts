@@ -1,18 +1,16 @@
 import { ERR, StyledMessage, WARN } from '../StyledMessage.js';
-import { controller } from '../WLETraceController.js';
+import { type WLETraceController } from '../WLETraceController.js';
 import { triggerGuardBreakpoint } from './triggerGuardBreakpoint.js';
 import { type Material } from '@wonderlandengine/api';
 import { trackedMaterials } from './trackedMaterials.js';
 
-controller.registerFeature('guard:Material');
-
-export function guardMaterial(material: Material, strict: boolean, originFactory: ((mesh: Material) => StyledMessage) | null = null) {
+export function guardMaterial(controller: WLETraceController, material: Material, strict: boolean, originFactory: ((mesh: Material) => StyledMessage) | null = null) {
     if (!controller.isEnabled('guard:Material')) {
         return;
     }
 
     if (material._index < 0 || !trackedMaterials.has(material.engine, material._index)) {
-        let message = StyledMessage.fromMaterial(material);
+        let message = StyledMessage.fromMaterial(controller, material);
         if (originFactory !== null) {
             message = originFactory(material).addSubMessage(message);
         }
@@ -27,14 +25,14 @@ export function guardMaterial(material: Material, strict: boolean, originFactory
             .add('attempt to use invalid Material')
             .print(true, strict ? ERR : WARN);
 
-        triggerGuardBreakpoint(true);
+        triggerGuardBreakpoint(controller, true);
     }
 }
 
-export function strictGuardMaterial(material: Material) {
-    guardMaterial(material, true);
+export function strictGuardMaterial(controller: WLETraceController, material: Material) {
+    guardMaterial(controller, material, true);
 }
 
-export function softGuardMaterial(material: Material) {
-    guardMaterial(material, false);
+export function softGuardMaterial(controller: WLETraceController, material: Material) {
+    guardMaterial(controller, material, false);
 }

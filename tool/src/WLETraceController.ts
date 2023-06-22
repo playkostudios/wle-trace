@@ -1,6 +1,28 @@
+import { triggerBreakpoint } from './utils/triggerBreakpoint.js';
+
+export type FeatureToggleHandler = (id: string, isOn: boolean) => void;
+
 export class WLETraceController {
     features = new Map<string, boolean>();
-    _injectionQueue: Array<(controller: WLETraceController) => void> | null = [];
+    _featureToggleHandlers = new Map<string, Array<FeatureToggleHandler>>();
+    queuedTraces = new Array<any[]>();
+    maxQueuedTraces = 100;
+    replayBuffer = new Array<Uint8Array>();
+
+    constructor() {
+        // -- common features --
+        // StyledMessage
+        this.registerFeature('fast-trace');
+        this.registerFeature('fast-objects');
+        // sentinel
+        this.registerFeature('breakpoint:sentinel');
+
+        // -- other stuff --
+        // setup sentinel
+        window.addEventListener('error', () => {
+            this.triggerSentinel('uncaught exception');
+        });
+    }
 
     registerFeature(id: string) {
         this.features.set(id, false);
@@ -27,6 +49,17 @@ export class WLETraceController {
         this.features.set(id, !isOn);
 
         console.debug(`[wle-trace CONTROLLER] Toggled feature "${id}" (is now ${isOn ? 'off' : 'on'})`);
+
+        const handlers = this._featureToggleHandlers.get(id);
+        if (handlers) {
+            for (const handler of handlers) {
+                try {
+                    handler(id, isOn);
+                } catch(err) {
+                    console.error(`[wle-trace CONTROLLER] Unhandled exception in feature toggle handler:`, err);
+                }
+            }
+        }
         return !isOn;
     }
 
@@ -87,25 +120,59 @@ export class WLETraceController {
         }
     }
 
-    waitForInjections(callback: (controller: WLETraceController) => void) {
-        if (this._injectionQueue === null) {
-            callback(this);
+    handleFeatureToggle(id: string, callback: FeatureToggleHandler) {
+        let handlers = this._featureToggleHandlers.get(id);
+
+        if (handlers) {
+            handlers.push(callback);
         } else {
-            this._injectionQueue.push(callback);
+            handlers = [callback];
+            this._featureToggleHandlers.set(id, handlers);
         }
     }
 
-    _markInjectionsDone() {
-        if (this._injectionQueue) {
-            console.debug('[wle-trace CONTROLLER] ready; engine loaded, all hooks injected');
+    bindFunc<A extends any[], R>(callback: (controller: WLETraceController, ...args: A) => R): (...args: A) => R {
+        return callback.bind(null, this);
+    }
 
-            for (const callback of this._injectionQueue) {
-                callback(this);
+    queueTrace(argumentParts: any[]) {
+        this.queuedTraces.push(argumentParts);
+
+        const queuedTraceCount = this.queuedTraces.length;
+        if (queuedTraceCount > this.maxQueuedTraces) {
+            const toRemove = queuedTraceCount - this.maxQueuedTraces;
+            this.queuedTraces.splice(0, toRemove);
+        }
+    }
+
+    clearTraceQueue() {
+        this.queuedTraces.length = 0;
+    }
+
+    recordWASMCall(_methodName: string, ..._args: any[]) {
+        // TODO
+    }
+
+    triggerSentinel(reason = 'triggered manually by user') {
+        console.error(`[wle-trace CONTROLLER] sentinel triggered. reason: ${reason}`);
+
+        const queuedTraceCount = this.queuedTraces.length;
+        if (queuedTraceCount > 0) {
+            console.debug(`[wle-trace CONTROLLER] flushing ${queuedTraceCount} queued trace message${queuedTraceCount > 1 ? 's (oldest at top, newest at bottom)' : ''}:`);
+
+            for (const argumentParts of this.queuedTraces) {
+                console.debug(...argumentParts);
             }
 
-            this._injectionQueue = null;
+            this.clearTraceQueue();
         }
+
+        if (this.replayBuffer.length !== 0) {
+            // TODO download replay buffer
+
+            this.replayBuffer.length = 0;
+        }
+
+        triggerBreakpoint(this, 'sentinel');
     }
 }
-
-export const controller = new WLETraceController();

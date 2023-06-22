@@ -1,21 +1,18 @@
 import { type TracedObject3D } from '../types/TracedObject3D.js';
 import { ERR, StyledMessage, WARN } from '../StyledMessage.js';
-import { controller } from '../WLETraceController.js';
+import { type WLETraceController } from '../WLETraceController.js';
 import { addDestructionTrace } from './addDestructionTrace.js';
 import { triggerGuardBreakpoint } from './triggerGuardBreakpoint.js';
 import { trackedObject3Ds } from './trackedObject3Ds.js';
 
-controller.registerFeature('guard:Object3D');
-controller.registerFeature('debug:ghost:Object3D');
-
-export function guardObject(obj: TracedObject3D, strict: boolean, originFactory: ((component: TracedObject3D) => StyledMessage) | null = null) {
+export function guardObject(controller: WLETraceController, obj: TracedObject3D, strict: boolean, originFactory: ((component: TracedObject3D) => StyledMessage) | null = null) {
     if (!controller.isEnabled('guard:Object3D')) {
         return;
     }
 
     if (controller.isEnabled('debug:ghost:Object3D')) {
         if (!trackedObject3Ds.has(obj._engine, obj)) {
-            new StyledMessage()
+            new StyledMessage(controller)
                 .add(`ghost Object3D (ID ${obj._objectId}) detected in guard`)
                 .print(true, ERR);
 
@@ -33,11 +30,11 @@ export function guardObject(obj: TracedObject3D, strict: boolean, originFactory:
         } else if (obj.__wle_trace_destroyed_data) {
             [path, destroyTrace] = obj.__wle_trace_destroyed_data;
         } else {
-            new StyledMessage()
+            new StyledMessage(controller)
                 .add('use-after-destroy detected in unexpected destroyed object')
                 .print(true, ERR);
 
-            triggerGuardBreakpoint(strict);
+            triggerGuardBreakpoint(controller, strict);
 
             return;
         }
@@ -81,18 +78,18 @@ export function guardObject(obj: TracedObject3D, strict: boolean, originFactory:
             message.add('; accessed while Object3D is being destroyed');
         }
 
-        addDestructionTrace(message, destroyTrace);
+        addDestructionTrace(controller, message, destroyTrace);
 
         message.print(true, strict ? ERR : WARN);
 
-        triggerGuardBreakpoint(strict);
+        triggerGuardBreakpoint(controller, strict);
     }
 }
 
-export function strictGuardObject(obj: TracedObject3D) {
-    guardObject(obj, true);
+export function strictGuardObject(controller: WLETraceController, obj: TracedObject3D) {
+    guardObject(controller, obj, true);
 }
 
-export function softGuardObject(obj: TracedObject3D) {
-    guardObject(obj, false);
+export function softGuardObject(controller: WLETraceController, obj: TracedObject3D) {
+    guardObject(controller, obj, false);
 }

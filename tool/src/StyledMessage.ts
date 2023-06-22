@@ -1,6 +1,6 @@
 import { Component, Material, Mesh, Object3D, Texture, type WonderlandEngine } from '@wonderlandengine/api';
 import { origChildrenGetter, origGetComponentsMethod, origNameGetter, origParentGetter, origObjectGetter, origTypeGetter } from './hooks/orig-properties.js';
-import { controller } from './WLETraceController.js';
+import { type WLETraceController } from './WLETraceController.js';
 import { type TracedObject3D } from './types/TracedObject3D.js';
 import { type TracedComponent } from './types/TracedComponent.js';
 import { type TracedTexture } from './types/TracedTexture.js';
@@ -41,14 +41,13 @@ function isFunction(funcOrClass: Function) {
     return (!propertyNames.includes('prototype') || propertyNames.includes('arguments'));
 }
 
-controller.registerFeature('fast-trace');
-controller.registerFeature('fast-objects');
-
 export class StyledMessage {
     parts: (string | number)[] = [];
 
-    static fromObject3D(obj: TracedObject3D) {
-        const message = new StyledMessage();
+    constructor(readonly controller: WLETraceController) {}
+
+    static fromObject3D(controller: WLETraceController, obj: TracedObject3D) {
+        const message = new StyledMessage(controller);
 
         // XXX special case for root object
         const objId = obj._objectId;
@@ -169,7 +168,7 @@ export class StyledMessage {
         return message;
     }
 
-    static fromComponent(component: TracedComponent) {
+    static fromComponent(controller: WLETraceController, component: TracedComponent) {
         let obj = null;
 
         if (component._object) {
@@ -180,9 +179,9 @@ export class StyledMessage {
 
         let message;
         if (obj) {
-            message = StyledMessage.fromObject3D(obj);
+            message = StyledMessage.fromObject3D(controller, obj);
         } else {
-            message = new StyledMessage();
+            message = new StyledMessage(controller);
             message.add('<no object attached>', ERR);
         }
 
@@ -227,32 +226,32 @@ export class StyledMessage {
         return message;
     }
 
-    static fromMesh(meshOrIdx: TracedMesh | number) {
+    static fromMesh(controller: WLETraceController, meshOrIdx: TracedMesh | number) {
         if (typeof meshOrIdx !== 'number') {
             meshOrIdx = meshOrIdx._index;
         }
 
-        return new StyledMessage().add(`Mesh<${meshOrIdx}>`);
+        return new StyledMessage(controller).add(`Mesh<${meshOrIdx}>`);
     }
 
-    static fromTexture(textureOrId: TracedTexture | number) {
+    static fromTexture(controller: WLETraceController, textureOrId: TracedTexture | number) {
         if (typeof textureOrId !== 'number') {
             textureOrId = textureOrId.id;
         }
 
-        return new StyledMessage().add(`Texture<${textureOrId}>`);
+        return new StyledMessage(controller).add(`Texture<${textureOrId}>`);
     }
 
-    static fromMaterial(materialOrIdx: Material | number) {
+    static fromMaterial(controller: WLETraceController, materialOrIdx: Material | number) {
         if (typeof materialOrIdx !== 'number') {
             materialOrIdx = materialOrIdx._index;
         }
 
-        return new StyledMessage().add(`Material<${materialOrIdx}>`);
+        return new StyledMessage(controller).add(`Material<${materialOrIdx}>`);
     }
 
-    static fromValue(value: unknown) {
-        const message = new StyledMessage();
+    static fromValue(controller: WLETraceController, value: unknown) {
+        const message = new StyledMessage(controller);
 
         if (value === null) {
             message.add('null');
@@ -279,7 +278,7 @@ export class StyledMessage {
             break;
         case 'symbol':
             message.add('Symbol{');
-            message.addSubMessage(StyledMessage.fromValue(value.description));
+            message.addSubMessage(StyledMessage.fromValue(controller, value.description));
             message.add('}');
             break;
         case 'function':
@@ -305,7 +304,7 @@ export class StyledMessage {
                         message.add(', ');
                     }
 
-                    message.addSubMessage(StyledMessage.fromValue(subValue));
+                    message.addSubMessage(StyledMessage.fromValue(controller, subValue));
                 }
 
                 message.add(']');
@@ -346,7 +345,7 @@ export class StyledMessage {
                                 } else {
                                     // value
                                     message.add(': ');
-                                    message.addSubMessage(StyledMessage.fromValue(subValue));
+                                    message.addSubMessage(StyledMessage.fromValue(controller, subValue));
                                 }
                             }
                         } else {
@@ -357,18 +356,18 @@ export class StyledMessage {
                     message.add('}');
                 } else if (value instanceof Object3D) {
                     message.add('Object3D{');
-                    message.addSubMessage(StyledMessage.fromObject3D(value as unknown as TracedObject3D));
+                    message.addSubMessage(StyledMessage.fromObject3D(controller, value as unknown as TracedObject3D));
                     message.add('}');
                 } else if (value instanceof Component) {
                     message.add('Component{');
-                    message.addSubMessage(StyledMessage.fromComponent(value as unknown as TracedComponent));
+                    message.addSubMessage(StyledMessage.fromComponent(controller, value as unknown as TracedComponent));
                     message.add('}');
                 } else if (value instanceof Mesh) {
-                    message.addSubMessage(StyledMessage.fromMesh(value));
+                    message.addSubMessage(StyledMessage.fromMesh(controller, value));
                 } else if (value instanceof Texture) {
-                    message.addSubMessage(StyledMessage.fromTexture(value));
+                    message.addSubMessage(StyledMessage.fromTexture(controller, value));
                 } else if (value instanceof Material) {
-                    message.addSubMessage(StyledMessage.fromMaterial(value));
+                    message.addSubMessage(StyledMessage.fromMaterial(controller, value));
                 } else if (value instanceof Texture) {
                     message.add(`Texture<${(value as unknown as { _id: number })._id}>`);
                 } else if (value instanceof Material) {
@@ -459,7 +458,7 @@ export class StyledMessage {
         // }
 
         if (trace) {
-            if (controller.isEnabled('fast-trace')) {
+            if (this.controller.isEnabled('fast-trace')) {
                 console.debug(...argumentParts);
             } else {
                 console.groupCollapsed(...argumentParts);
@@ -482,6 +481,6 @@ export class StyledMessage {
     }
 
     clone() {
-        return new StyledMessage().addSubMessage(this);
+        return new StyledMessage(this.controller).addSubMessage(this);
     }
 }

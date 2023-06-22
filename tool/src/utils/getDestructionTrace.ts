@@ -1,9 +1,7 @@
-import { controller } from '../WLETraceController.js';
+import { type WLETraceController } from '../WLETraceController.js';
 import { getStackTrace } from './getStackTrace.js';
 
-controller.registerFeature('destruction-traces');
-
-export function getDestructionTrace() {
+export function getDestructionTrace(controller: WLETraceController) {
     if (controller.isEnabled('destruction-traces')) {
         return getStackTrace();
     } else {

@@ -5,64 +5,62 @@ import { componentDestroyCheck, componentDestroyMark } from './componentDestroy.
 import { Object3DDestroyingData, type TracedObject3D } from '../types/TracedObject3D.js';
 import { origChildrenGetter, origGetComponentsMethod } from '../hooks/orig-properties.js';
 import { ERR, StyledMessage, WARN } from '../StyledMessage.js';
-import { controller } from '../WLETraceController.js';
+import { type WLETraceController } from '../WLETraceController.js';
 import { trackedObject3Ds } from './trackedObject3Ds.js';
 import { trackedComponents } from './trackedComponents.js';
 import { type WonderlandEngine } from '@wonderlandengine/api';
 
-controller.registerFeature('trace:destruction:Object3D');
-
 // XXX object destruction order is from parent to child as of 1.0.2
 
-export function deepDestroyCheck(object: TracedObject3D) {
+export function deepDestroyCheck(controller: WLETraceController, object: TracedObject3D) {
     if (object.__wle_trace_destroyed_data) {
-        new StyledMessage()
+        new StyledMessage(controller)
             .add('double-destroy detected in object ', ERR)
             .addSubMessage(object.__wle_trace_destroyed_data[0])
             .print(true, ERR);
 
-        triggerGuardBreakpoint(true);
+        triggerGuardBreakpoint(controller, true);
     } else if (object.__wle_trace_destroying_data) {
         // XXX should this be an error? it might be valid to destroy in a
         //     destroy handler - need testing. if it's valid, do nothing in this
         //     case (or warn?)
-        new StyledMessage()
+        new StyledMessage(controller)
             .add('destroy detected in destroy handler of a component in the same object or child ', ERR)
             .addSubMessage(object.__wle_trace_destroying_data[0])
             .print(true, ERR);
 
-        triggerGuardBreakpoint(true);
+        triggerGuardBreakpoint(controller, true);
     } else if (object._objectId === -1) {
-        new StyledMessage()
+        new StyledMessage(controller)
             .add('double-destroy detected in unexpected destroyed object')
             .print(true, ERR);
 
-        triggerGuardBreakpoint(true);
+        triggerGuardBreakpoint(controller, true);
     } else {
-        const path = StyledMessage.fromObject3D(object);
+        const path = StyledMessage.fromObject3D(controller, object);
 
         if (controller.isEnabled('trace:destruction:Object3D')) {
-            new StyledMessage()
+            new StyledMessage(controller)
                 .add('destroying Object3D ')
                 .addSubMessage(path)
                 .add(` (ID ${object._objectId})`)
                 .print(true);
         }
 
-        triggerBreakpoint('destruction:Object3D');
+        triggerBreakpoint(controller, 'destruction:Object3D');
 
         const children = origChildrenGetter.apply(object);
         const components = origGetComponentsMethod.apply(object);
 
         for (const comp of components) {
-            componentDestroyCheck(comp);
+            componentDestroyCheck(controller, comp);
         }
 
         for (const child of children) {
-            deepDestroyCheck(child);
+            deepDestroyCheck(controller, child);
         }
 
-        object.__wle_trace_destroying_data = [path, children, components, getDestructionTrace()];
+        object.__wle_trace_destroying_data = [path, children, components, getDestructionTrace(controller)];
     }
 }
 
@@ -97,22 +95,22 @@ export function deepDestroyMark(object: TracedObject3D) {
     }
 }
 
-export function sceneDestroyCheck(engine: WonderlandEngine) {
+export function sceneDestroyCheck(controller: WLETraceController, engine: WonderlandEngine) {
     // mark everything in scene as being destroyed
     const sceneRoot = engine.wrapObject(0);
     const children = origChildrenGetter.apply(sceneRoot);
     const components = origGetComponentsMethod.apply(sceneRoot);
 
     for (const comp of components) {
-        componentDestroyCheck(comp);
+        componentDestroyCheck(controller, comp);
     }
 
     for (const child of children) {
-        deepDestroyCheck(child);
+        deepDestroyCheck(controller, child);
     }
 }
 
-export function trackedDestroyMark(engine: WonderlandEngine, origin: string) {
+export function trackedDestroyMark(controller: WLETraceController, engine: WonderlandEngine, origin: string) {
     // HACK we can't use *DestroyMark on everything, because there could be new
     //      objects, and the hierarchy of the scene is now nuked so we also
     //      can't use deep marking
@@ -120,7 +118,7 @@ export function trackedDestroyMark(engine: WonderlandEngine, origin: string) {
         if (comp.__wle_trace_destroying_data) {
             componentDestroyMark(comp);
         } else if (!comp.__wle_trace_destroyed_data) {
-            comp.__wle_trace_destroyed_data = [new StyledMessage().add(`<unavailable Component; unexpectedly destroyed by ${origin}>`, WARN), null];
+            comp.__wle_trace_destroyed_data = [new StyledMessage(controller).add(`<unavailable Component; unexpectedly destroyed by ${origin}>`, WARN), null];
         }
     }
 
@@ -128,7 +126,7 @@ export function trackedDestroyMark(engine: WonderlandEngine, origin: string) {
         if (obj.__wle_trace_destroying_data) {
             shallowDestroyMark(obj);
         } else if (!obj.__wle_trace_destroyed_data) {
-            obj.__wle_trace_destroyed_data = [new StyledMessage().add(`<unavailable Object3D; unexpectedly destroyed by ${origin}>`, WARN), null];
+            obj.__wle_trace_destroyed_data = [new StyledMessage(controller).add(`<unavailable Object3D; unexpectedly destroyed by ${origin}>`, WARN), null];
         }
     }
 }

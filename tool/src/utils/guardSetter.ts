@@ -1,5 +1,5 @@
 import { Component, Material, Mesh, Object3D, Texture } from '@wonderlandengine/api';
-import { controller } from '../WLETraceController.js';
+import { type WLETraceController } from '../WLETraceController.js';
 import { guardObject } from './guardObject.js';
 import { guardComponent } from './guardComponent.js';
 import { StyledMessage } from '../StyledMessage.js';
@@ -10,36 +10,34 @@ import { guardMesh } from './guardMesh.js';
 import { guardTexture } from './guardTexture.js';
 import { guardMaterial } from './guardMaterial.js';
 
-controller.registerFeature('guard:setters');
-
-function originFactory(isObject: boolean, objOrComp: TracedObject3D | TracedComponent, setterName: string) {
-    const message = isObject ? StyledMessage.fromObject3D(objOrComp as TracedObject3D) : StyledMessage.fromComponent(objOrComp as TracedComponent);
+function originFactory(isObject: boolean, controller: WLETraceController, objOrComp: TracedObject3D | TracedComponent, setterName: string) {
+    const message = isObject ? StyledMessage.fromObject3D(controller, objOrComp as TracedObject3D) : StyledMessage.fromComponent(controller, objOrComp as TracedComponent);
     return message.add(`::${setterName} = `);
 }
 
-export function guardSetter(isObject: boolean, objOrComp: TracedObject3D | TracedComponent, setterName: string, args: any[], strict: boolean) {
+function guardSetter(isObject: boolean, controller: WLETraceController, objOrComp: TracedObject3D | TracedComponent, setterName: string, args: any[], strict: boolean) {
     if (!controller.isEnabled('guard:setters')) {
         return;
     }
 
     if (isObject) {
-        guardObject(objOrComp as TracedObject3D, strict);
+        guardObject(controller, objOrComp as TracedObject3D, strict);
     } else {
-        guardComponent(objOrComp as TracedComponent, strict);
+        guardComponent(controller, objOrComp as TracedComponent, strict);
     }
 
     const value = args[0];
     if (typeof value === 'object') {
         if (value instanceof Object3D) {
-            guardObject(value as unknown as TracedObject3D, strict, originFactory.bind(null, isObject, objOrComp, setterName));
+            guardObject(controller, value as unknown as TracedObject3D, strict, originFactory.bind(null, isObject, controller, objOrComp, setterName));
         } else if (value instanceof Component) {
-            guardComponent(value as unknown as TracedComponent, strict, originFactory.bind(null, isObject, objOrComp, setterName));
+            guardComponent(controller, value as unknown as TracedComponent, strict, originFactory.bind(null, isObject, controller, objOrComp, setterName));
         } else if (value instanceof Mesh) {
-            guardMesh(value, strict, originFactory.bind(null, isObject, objOrComp, setterName));
+            guardMesh(controller, value, strict, originFactory.bind(null, isObject, controller, objOrComp, setterName));
         } else if (value instanceof Texture) {
-            guardTexture(value, strict, originFactory.bind(null, isObject, objOrComp, setterName));
+            guardTexture(controller, value, strict, originFactory.bind(null, isObject, controller, objOrComp, setterName));
         } else if (value instanceof Material) {
-            guardMaterial(value, strict, originFactory.bind(null, isObject, objOrComp, setterName));
+            guardMaterial(controller, value, strict, originFactory.bind(null, isObject, controller, objOrComp, setterName));
         }
     }
 }
@@ -47,8 +45,8 @@ export function guardSetter(isObject: boolean, objOrComp: TracedObject3D | Trace
 export const guardObjectSetter = guardSetter.bind(null, true);
 export const guardComponentSetter = guardSetter.bind(null, false);
 
-export function guardComponentSetterIAC(comp: TracedComponent, setterName: string, args: any[], strict: boolean) {
+export function guardComponentSetterIAC(controller: WLETraceController, comp: TracedComponent, setterName: string, args: any[], strict: boolean) {
     if (!inAddComponent.has(comp.engine)) {
-        guardComponentSetter(comp, setterName, args, strict);
+        guardComponentSetter(controller, comp, setterName, args, strict);
     }
 }

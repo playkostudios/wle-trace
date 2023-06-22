@@ -1,23 +1,20 @@
 import { origObjectGetter } from '../hooks/orig-properties.js';
 import { ERR, StyledMessage, WARN } from '../StyledMessage.js';
-import { controller } from '../WLETraceController.js';
+import { type WLETraceController } from '../WLETraceController.js';
 import { guardObject } from './guardObject.js';
 import { triggerGuardBreakpoint } from './triggerGuardBreakpoint.js';
 import { addDestructionTrace } from './addDestructionTrace.js';
 import { type TracedComponent } from '../types/TracedComponent.js';
 import { trackedComponents } from './trackedComponents.js';
 
-controller.registerFeature('guard:Component');
-controller.registerFeature('debug:ghost:Component');
-
-export function guardComponent(component: TracedComponent, strict: boolean, originFactory: ((component: TracedComponent) => StyledMessage) | null = null) {
+export function guardComponent(controller: WLETraceController, component: TracedComponent, strict: boolean, originFactory: ((component: TracedComponent) => StyledMessage) | null = null) {
     if (!controller.isEnabled('guard:Component')) {
         return;
     }
 
     if (controller.isEnabled('debug:ghost:Component')) {
         if (!trackedComponents.has(component.engine, component)) {
-            new StyledMessage()
+            new StyledMessage(controller)
                 .add(`ghost Component (ID ${component._id}) detected in guard`)
                 .print(true, ERR);
 
@@ -43,29 +40,29 @@ export function guardComponent(component: TracedComponent, strict: boolean, orig
 
         message.add('use-after-destroy detected');
 
-        addDestructionTrace(message, component.__wle_trace_destroyed_data[1]);
+        addDestructionTrace(controller, message, component.__wle_trace_destroyed_data[1]);
 
         const style = strict ? ERR : WARN;
         message.print(true, style);
 
-        triggerGuardBreakpoint(true);
+        triggerGuardBreakpoint(controller, true);
     }
 
     const obj = origObjectGetter.apply(component);
     if (obj) {
-        guardObject(obj, strict);
+        guardObject(controller, obj, strict);
     } else {
-        const message = StyledMessage.fromComponent(component);
+        const message = StyledMessage.fromComponent(controller, component);
         message.add(' - attempt to use detached component', ERR);
         message.print(true, ERR);
-        triggerGuardBreakpoint(true);
+        triggerGuardBreakpoint(controller, true);
     }
 }
 
-export function strictGuardComponent(component: TracedComponent) {
-    guardComponent(component, true);
+export function strictGuardComponent(controller: WLETraceController, component: TracedComponent) {
+    guardComponent(controller, component, true);
 }
 
-export function softGuardComponent(component: TracedComponent) {
-    guardComponent(component, false);
+export function softGuardComponent(controller: WLETraceController, component: TracedComponent) {
+    guardComponent(controller, component, false);
 }

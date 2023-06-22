@@ -11,51 +11,45 @@
  *     - `wle:auto-benchmark:start` and `wle:auto-benchmark:end`: Append the benchmarking code
  */
 
-import wleTrace from '@playkostudios/wle-trace';
+import { injectWLETrace } from '@playkostudios/wle-trace';
 
-let firstLoad = true;
-wleTrace.waitForInjections(() => {
-    wleTrace.enableWithPrefix('guard:');
-    wleTrace.enableWithPrefix('trace:destruction:');
-    wleTrace.enableWithPrefix('trace:construction:');
-    // wleTrace.enableWithPrefix('trace:reclaim:')
-    wleTrace.enable('breakpoint:guard-failed');
-    wleTrace.enable('breakpoint:strict-guard-only');
-    // wleTrace.enable('fast-trace');
-    // wleTrace.enable('fast-objects');
-    wleTrace.enable('destruction-traces');
-    wleTrace.enableWithPrefix('debug:');
+injectWLETrace().then((wleTrace) => {
+    window.wleTrace = wleTrace;
 
-    wleTrace.enableWithPrefix('trace:');
-    wleTrace.disableWithPrefix('trace:WASM.');
-    wleTrace.enable('trace:WASM._wljs_component_create');
-    wleTrace.enable('trace:WASM._wljs_component_init');
-    wleTrace.enable('trace:WASM._wljs_component_onDestroy');
-    wleTrace.enable('trace:WASM._wl_load_scene_bin');
-    wleTrace.disableWithPrefix('trace:Object3D.translate');
-    wleTrace.disableWithPrefix('trace:Object3D.rotate');
-    wleTrace.disableWithPrefix('trace:Object3D.reset');
-    wleTrace.disableWithPrefix('trace:Object3D.getPosition');
-    wleTrace.disableWithPrefix('trace:Object3D.getTranslation');
-    wleTrace.disableWithPrefix('trace:get:Object3D.parent');
-    wleTrace.disableWithPrefix('trace:get:Object3D.transform');
-    wleTrace.disableWithPrefix('trace:set:Object3D.transform');
-    wleTrace.disable('trace:get:Component.object');
-    wleTrace.disable('trace:get:Component.active');
+    // wleTrace.enableWithPrefix('guard:');
+    // wleTrace.enableWithPrefix('trace:destruction:');
+    // wleTrace.enableWithPrefix('trace:construction:');
+    // // wleTrace.enableWithPrefix('trace:reclaim:')
+    // wleTrace.enable('breakpoint:guard-failed');
+    // wleTrace.enable('breakpoint:strict-guard-only');
+    // // wleTrace.enable('fast-trace');
+    // // wleTrace.enable('fast-objects');
+    // wleTrace.enable('destruction-traces');
+    // wleTrace.enableWithPrefix('debug:');
 
-    return;
-    if (firstLoad) {
-        firstLoad = false;
-        const timeoutMS = 2500;
+    // wleTrace.enableWithPrefix('trace:');
+    // wleTrace.disableWithPrefix('trace:WASM.');
+    // wleTrace.enable('trace:WASM._wljs_component_create');
+    // wleTrace.enable('trace:WASM._wljs_component_init');
+    // wleTrace.enable('trace:WASM._wljs_component_onDestroy');
+    // wleTrace.enable('trace:WASM._wl_load_scene_bin');
+    // wleTrace.disableWithPrefix('trace:Object3D.translate');
+    // wleTrace.disableWithPrefix('trace:Object3D.rotate');
+    // wleTrace.disableWithPrefix('trace:Object3D.reset');
+    // wleTrace.disableWithPrefix('trace:Object3D.getPosition');
+    // wleTrace.disableWithPrefix('trace:Object3D.getTranslation');
+    // wleTrace.disableWithPrefix('trace:get:Object3D.parent');
+    // wleTrace.disableWithPrefix('trace:get:Object3D.transform');
+    // wleTrace.disableWithPrefix('trace:set:Object3D.transform');
+    // wleTrace.disable('trace:get:Component.object');
+    // wleTrace.disable('trace:get:Component.active');
+    wleTrace.enableWithPrefix('trace:WASM.');
+    wleTrace.enable('fast-trace');
+    wleTrace.enable('fast-objects');
+    wleTrace.enable('trace-sentinel');
 
-        console.debug(`[wle-trace TEST] reloading scene in ${timeoutMS} milliseconds`);
-
-        setTimeout(() => {
-            console.debug('[wle-trace TEST] reloading scene...');
-            engine.scene.load(`${Constants.ProjectName}.bin`);
-        }, timeoutMS);
-    }
-})
+    setTimeout(() => {throw new Error('random bs')}, 5000)
+});
 
 /* wle:auto-imports:start */
 import {MouseLookComponent} from '@wonderlandengine/components';
