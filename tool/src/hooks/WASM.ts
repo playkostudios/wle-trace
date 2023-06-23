@@ -45,9 +45,9 @@ export function injectWASMReplayer(controller: WLETraceController) {
         const descriptor = getPropertyDescriptor(WASM.prototype, name);
         if (descriptor.value && (typeof descriptor.value) === 'function') {
             injectMethod(WASM.prototype, name, {
-                beforeHook: (_wasm: WASM, methodName: string, args: any[]) => {
-                    controller.markWASMCallbackAsReplayed(methodName, args);
-                }
+                replaceHook: function (this: WASM, ...args: any[]) {
+                    return controller.markWASMCallbackAsReplayed(name, args);
+                },
             });
         }
     }

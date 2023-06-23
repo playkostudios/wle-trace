@@ -16,6 +16,7 @@ export interface BaseHookOptions {
     afterHook?: Function;
     exceptionHook?: Function;
     safeHooks?: boolean;
+    replaceHook?: Function;
 }
 
 export interface HookOptions extends BaseHookOptions {
@@ -28,11 +29,12 @@ export function addHooksToMember(func: Function, memberName: string, options: Ho
     const beforeHook = options.beforeHook;
     const afterHook = options.afterHook;
     const exceptionHook = options.exceptionHook;
+    const replaceHook = options.replaceHook;
     const returnMode = options.returnMode ?? ReturnMode.Pass;
     // TODO replace this with false once tool is stable enough
     const safeHooks = options.safeHooks ?? true;
 
-    if (!(traceHook || beforeHook || afterHook)) {
+    if (!(traceHook || beforeHook || afterHook || exceptionHook || replaceHook)) {
         console.warn('This member was injected with no hooks. Either stop injecting it or add hooks');
         return func;
     }
@@ -45,7 +47,7 @@ export function addHooksToMember(func: Function, memberName: string, options: Ho
     // -- decide argument list for wrapper curry --
     let newBody = [];
     const extraParams = ['f'];
-    const extraArgs: any[] = [func];
+    const extraArgs: any[] = [replaceHook === undefined ? func : replaceHook];
 
     if (beforeHook || traceHook || afterHook || exceptionHook) {
         extraParams.push('n');

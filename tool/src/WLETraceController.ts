@@ -170,9 +170,11 @@ export class WLETraceController {
     }
 
     _recordWASMGeneric(isCall: boolean, methodName: string, args: any[]) {
-        if (!this.recordBuffer) {
+        if (!this.recordBuffer || this.engine === null) {
             return;
         }
+
+        // console.debug(`record call${isCall ? '' : 'back'}`, methodName);
 
         // get index of method name
         const methodIdx = this._getStringIdx(methodName);
@@ -183,6 +185,7 @@ export class WLETraceController {
         // 1    ; eventType (0 if callback, 1 if call, 2 if dma (not used here))
         // 4    ; methodIdx
         // 1    ; argCount
+        // TODO callback return types may need to be recorded
         const argCount = args.length;
         const headerBuffer = new ArrayBuffer(6);
         const headerView8 = new Uint8Array(headerBuffer);
@@ -248,12 +251,14 @@ export class WLETraceController {
         // 4    ; offset
         // 4    ; buffer length
         this.recordBuffer.push(new Uint8Array([ 2 ]));
-        this.recordBuffer.push(new Uint8Array([ offset, src.byteLength ]));
+        this.recordBuffer.push(new Uint32Array([ offset, byteLength ]));
+
+        // console.debug('record dma', byteLength, '@', offset);
 
         // add buffer to replay buffer
         const srcCopy = new Uint8Array(byteLength);
         if (ArrayBuffer.isView(src)) {
-            srcCopy.set(src);
+            srcCopy.set(new Uint8Array(src.buffer, src.byteOffset, src.byteLength));
         } else {
             srcCopy.set(new Uint8Array(src, 0, byteLength));
         }
@@ -262,7 +267,6 @@ export class WLETraceController {
     }
 
     _continueReplay() {
-        // FIXME all tmp32 is wrong! check startReplay for proper example
         if (!this.replayBuffer || !this.engine) {
             return;
         }
@@ -270,16 +274,29 @@ export class WLETraceController {
         const end = this.replayBuffer.byteLength;
         while (this.replayOffset < end) {
             const eventType = this.replayBuffer[this.replayOffset];
-            this.replayOffset++;
+            // XXX don't inc replayOffset yet. we need to keep the offset if
+            //     eventType is 0 (callback), because we are revisiting this
+            //     event later
 
             if (eventType === 0) {
-                console.debug('replay waiting for callback...');
+                const tmp32 = new Uint32Array(1);
+                const tmp8 = new Uint8Array(tmp32.buffer);
+                tmp8.set(new Uint8Array(this.replayBuffer.buffer, this.replayOffset + 1, 4));
+                const methodName = this.stringDictionary[tmp32[0]];
+                console.debug('replay waiting for callback...', methodName);
+                // if (methodName === '_wljs_init' || methodName === '_wljs_allocate' || methodName === '_wljs_reallocate') {
+                //     // HACK stupid workaround, don't use this later
+                //     this.markWASMCallbackAsReplayed(methodName, []);
+                // }
                 return; // callback, wait for a callback-as-replayed mark
             } else if (eventType === 1) {
                 // wasm call
+                this.replayOffset++;
+
                 // parse method name
                 const tmp32 = new Uint32Array(1);
-                tmp32.set(new Uint8Array(this.replayBuffer, this.replayOffset, 4));
+                const tmp8 = new Uint8Array(tmp32.buffer);
+                tmp8.set(new Uint8Array(this.replayBuffer.buffer, this.replayOffset, 4));
                 const methodName = this.stringDictionary[tmp32[0]];
                 this.replayOffset += 4;
 
@@ -290,8 +307,9 @@ export class WLETraceController {
 
                 // parse number args
                 const argBuf = new Float64Array(argCount);
+                const argBuf8 = new Uint8Array(argBuf.buffer);
                 const argBufLen = argCount * 8;
-                argBuf.set(new Uint8Array(this.replayBuffer, this.replayOffset, argBufLen));
+                argBuf8.set(new Uint8Array(this.replayBuffer.buffer, this.replayOffset, argBufLen));
                 this.replayOffset += argBufLen;
 
                 for (let i = 0; i < argCount; i++) {
@@ -303,13 +321,16 @@ export class WLETraceController {
                 (this.engine.wasm as unknown as Record<string, (...args: any[]) => any>)[methodName](...args);
             } else if (eventType === 2) {
                 // dma
+                this.replayOffset++;
+
                 const tmp32 = new Uint32Array(2);
-                tmp32.set(new Uint8Array(this.replayBuffer, this.replayOffset, 8));
+                const tmp8 = new Uint8Array(tmp32.buffer);
+                tmp8.set(new Uint8Array(this.replayBuffer.buffer, this.replayOffset, 8));
                 this.replayOffset += 8;
                 const byteOffset = tmp32[0];
                 const byteLength = tmp32[1];
-                console.debug('replay dma', byteLength, 'bytes @', byteOffset);
-                this.engine.wasm.HEAPU8.set(new Uint8Array(this.replayBuffer, this.replayOffset, byteLength), byteOffset);
+                console.debug('replay dma', byteLength, 'bytes @', byteOffset, ';end=', byteOffset + byteLength, '; heap8 end=', this.engine.wasm.HEAPU8.byteLength);
+                this.engine.wasm.HEAPU8.set(new Uint8Array(this.replayBuffer.buffer, this.replayOffset, byteLength), byteOffset);
                 this.replayOffset += byteLength;
             } else {
                 debugger;
@@ -343,7 +364,8 @@ export class WLETraceController {
 
         // parse method name
         const tmp32 = new Uint32Array(1);
-        tmp32.set(new Uint8Array(this.replayBuffer, this.replayOffset, 4));
+        const tmp8 = new Uint8Array(tmp32.buffer);
+        tmp8.set(new Uint8Array(this.replayBuffer.buffer, this.replayOffset, 4));
         this.replayOffset += 4;
 
         if (methodIdx !== tmp32[0]) {
@@ -359,11 +381,16 @@ export class WLETraceController {
         this.replayOffset += argCount * 8;
 
         this._continueReplay();
+        // TODO if wasm expects a return value from the callback, return it here
     }
 
     startReplay(replayBuffer: Uint8Array) {
         if (this.replayBuffer) {
             throw new Error("Can't start replay; already replaying something");
+        }
+
+        if (!this.engine) {
+            throw new Error("Can't start replay; engine not loaded");
         }
 
         console.debug(`[wle-trace CONTROLLER] Replay mode active (${replayBuffer.byteLength} bytes)`);
@@ -385,6 +412,7 @@ export class WLETraceController {
             this.replayOffset += strLen;
         }
 
+        // actually start replay
         this._continueReplay();
     }
 

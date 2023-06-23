@@ -69,9 +69,9 @@ export async function injectWonderlandEngineReplayer(controller: WLETraceControl
             const descriptor = getPropertyDescriptor(wasm, name);
             if (descriptor.value && (typeof descriptor.value) === 'function') {
                 injectMethod(wasm, name, {
-                    beforeHook: (_wasm: WASM, methodName: string, args: any[]) => {
-                        controller.markWASMCallbackAsReplayed(methodName, args);
-                    }
+                    replaceHook: function (this: WASM, ...args: any[]) {
+                        return controller.markWASMCallbackAsReplayed(name, args);
+                    },
                 });
             }
         }
