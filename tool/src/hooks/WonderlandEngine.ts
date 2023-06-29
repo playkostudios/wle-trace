@@ -9,6 +9,7 @@ import { inSceneLoad } from '../utils/inSceneLoad.js';
 import { ERR, StyledMessage } from '../StyledMessage.js';
 import { handleScenePostReplace } from '../utils/handleScenePostReplace.js';
 import { makeGlobalObjMethodTracer } from '../utils/trace.js';
+import { injectRecorderHooks } from '../inject/injectRecorderHooks.js';
 
 function injectGenericWonderlandEngine(controller: WLETraceController, injectCallback: (engine: WonderlandEngine) => void): Promise<WonderlandEngine> {
     return new Promise((resolve, _reject) => {
@@ -16,7 +17,7 @@ function injectGenericWonderlandEngine(controller: WLETraceController, injectCal
         //     called. to hook them we have to hook into an init function AND
         //     THEN inject to those now-present methods
         injectMethod(WonderlandEngine.prototype, '_init', {
-            beforeHook: (engine: WonderlandEngine, _methodName: string, _args: any[]) => {
+            afterHook: (engine: WonderlandEngine, _methodName: string, _args: any[], _retVal: any) => {
                 controller.engine = engine;
                 injectCallback(engine);
 
@@ -38,21 +39,7 @@ export async function injectWonderlandEngineRecorder(controller: WLETraceControl
                 continue;
             }
 
-            const descriptor = getPropertyDescriptor(wasm, name);
-            if (descriptor.value && (typeof descriptor.value) === 'function') {
-                let beforeHook;
-                if (name.startsWith('_wljs_')) {
-                    beforeHook = (_wasm: WASM, methodName: string, args: any[]) => {
-                        controller.recordWASMCallback(methodName, args);
-                    };
-                } else {
-                    beforeHook = (_wasm: WASM, methodName: string, args: any[]) => {
-                        controller.recordWASMCall(methodName, args);
-                    };
-                }
-
-                injectMethod(wasm, name, { beforeHook });
-            }
+            injectRecorderHooks(controller, wasm, name);
         }
     });
 }

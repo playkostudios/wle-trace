@@ -14,6 +14,7 @@
 import { injectWLETrace, recordWLETrace, replayWLETrace } from '@playkostudios/wle-trace';
 import {loadRuntime} from '@wonderlandengine/api';
 import * as API from '@wonderlandengine/api'; // Deprecated: Backward compatibility.
+import * as wleTypeMaps from './wleTypeMaps.json';
 
 /* wle:auto-imports:start */
 import {MouseLookComponent} from '@wonderlandengine/components';
@@ -54,7 +55,7 @@ function testResourceManagement() {
 }
 
 function testRecord() {
-    recordWLETrace().then((wleTrace) => {
+    recordWLETrace(wleTypeMaps).then((wleTrace) => {
         setTimeout(() => wleTrace.stopRecordingAndDownload(), 5000);
 
         normalPostLoad();
@@ -70,13 +71,13 @@ function testReplay() {
 
 // testSentinel();
 // testResourceManagement();
-// testRecord();
-testReplay();
+testRecord();
+// testReplay();
 
 /* wle:auto-constants:start */
 const RuntimeOptions = {
-    physx: false,
-    loader: false,
+    physx: true,
+    loader: true,
     xrFramebufferScaleFactor: 1,
     canvas: 'canvas',
 };

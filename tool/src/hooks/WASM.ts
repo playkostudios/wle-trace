@@ -8,30 +8,13 @@ import { inAddComponent } from '../utils/inAddComponent.js';
 import { guardReclaimComponent } from '../utils/guardReclaim.js';
 import { type WLETraceController } from '../WLETraceController.js';
 import { makeGlobalObjMethodTracer } from '../utils/trace.js';
+import { injectRecorderHooks } from '../inject/injectRecorderHooks.js';
 
 export function injectWASMRecorder(controller: WLETraceController) {
-    const CALL_DENY_LIST = new Set([ '_registerComponentLegacy', '_registerComponent', '_typeIndexFor', '_typeNameFor', '_setEngine' ]);
-
     for (const name of Object.getOwnPropertyNames(WASM.prototype)) {
-        let isCall = !name.startsWith('_wljs_');
-        if (isCall && (CALL_DENY_LIST.has(name) || !name.startsWith('_'))) {
-            continue;
-        }
-
-        const descriptor = getPropertyDescriptor(WASM.prototype, name);
-        if (descriptor.value && (typeof descriptor.value) === 'function') {
-            let beforeHook;
-            if (isCall) {
-                beforeHook = (_wasm: WASM, methodName: string, args: any[]) => {
-                    controller.recordWASMCall(methodName, args);
-                };
-            } else {
-                beforeHook = (_wasm: WASM, methodName: string, args: any[]) => {
-                    controller.recordWASMCallback(methodName, args);
-                };
-            }
-
-            injectMethod(WASM.prototype, name, { beforeHook });
+        // we only care about preloaded WASM->JS methods
+        if (name.startsWith('_wljs_')) {
+            injectRecorderHooks(controller, WASM.prototype, name);
         }
     }
 }
