@@ -90,7 +90,14 @@ export class WLETraceReplayer implements ReplayBuffer {
 
     markCallbackAsReplayed(methodName: string, args: unknown[]): unknown {
         if (this.replayBuffer) {
-            const retVal = this.replayBuffer.markCallbackAsReplayed(methodName, args);
+            let retVal;
+            try {
+                retVal = this.replayBuffer.markCallbackAsReplayed(methodName, args);
+            } catch (err) {
+                console.error('[wle-trace REPLAYER] Exception occurred while marking callback as replayed, replay will be stopped');
+                this.disposeReplayBuffer();
+                throw err;
+            }
 
             if (this.replayBuffer.ended) {
                 this.disposeReplayBuffer();
@@ -105,7 +112,17 @@ export class WLETraceReplayer implements ReplayBuffer {
 
     continue(): boolean {
         if (this.replayBuffer) {
-            if (this.replayBuffer.continue()) {
+            let canContinue;
+
+            try {
+                canContinue = this.replayBuffer.continue();
+            } catch (err) {
+                console.error('[wle-trace REPLAYER] Exception occurred while continuing playback, replay will be stopped');
+                this.disposeReplayBuffer();
+                throw err;
+            }
+
+            if (canContinue) {
                 return true;
             } else {
                 this.disposeReplayBuffer();

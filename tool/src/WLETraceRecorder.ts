@@ -177,7 +177,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
             return;
         }
 
-        // console.debug(`[wle-trace RECORDER] record call${isCall ? '' : 'back'}`, methodName);
+        // console.debug(`[wle-trace RECORDER] record call${isCall ? '' : 'back'}`, methodName, args, threw, retVal);
 
         // get index of method name
         const methodIdx = this.getStringIdx(methodName);
@@ -187,13 +187,10 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
         // -----------
         // 1    ; eventType (0 if callback, 1 if call, 2 if throwing callback, 3 if throwing call, 4 if dma (not used here))
         // 4    ; methodIdx
-        // 1    ; argCount
-        const argCount = args.length;
-        const headerBuffer = new ArrayBuffer(6);
+        const headerBuffer = new ArrayBuffer(5);
         const headerBufferView = new DataView(headerBuffer);
         headerBufferView.setUint8(0, (isCall ? 1 : 0) | (threw ? 2 : 0));
         headerBufferView.setUint32(1, methodIdx);
-        headerBufferView.setUint8(5, argCount);
 
         this.recordBuffer.push(headerBuffer);
 

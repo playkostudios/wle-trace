@@ -147,7 +147,8 @@ export class ReplayBufferV1 implements ReplayBuffer {
 
                 // verify return value
                 if (hasRetValue && retVal !== expectedRetVal) {
-                    throw new Error('Unexpected WASM return value');
+                    console.error('[wle-trace REPLAYER] Return value mismatch; expected', expectedRetVal, ', got', retVal);
+                    throw new Error('Unexpected WASM return value; see console for details');
                 }
             } else if (eventType === 4) {
                 // dma
