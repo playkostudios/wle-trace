@@ -10,15 +10,15 @@ import { ERR, StyledMessage } from '../StyledMessage.js';
 import { handleScenePostReplace } from '../utils/handleScenePostReplace.js';
 import { makeGlobalObjMethodTracer } from '../utils/trace.js';
 import { injectRecorderHooks } from '../inject/injectRecorderHooks.js';
+import { WLETraceRecorder } from '../WLETraceRecorder.js';
 
-function injectGenericWonderlandEngine(controller: WLETraceController, injectCallback: (engine: WonderlandEngine) => void): Promise<WonderlandEngine> {
+function injectGenericWonderlandEngine(injectCallback: (engine: WonderlandEngine) => void): Promise<WonderlandEngine> {
     return new Promise((resolve, _reject) => {
         // XXX _wl_ methods (not _wljs_) are only added after loadRuntime is
         //     called. to hook them we have to hook into an init function AND
         //     THEN inject to those now-present methods
         injectMethod(WonderlandEngine.prototype, '_init', {
             afterHook: (engine: WonderlandEngine, _methodName: string, _args: any[], _retVal: any) => {
-                controller.engine = engine;
                 injectCallback(engine);
 
                 // mark injections as done (some features will be auto-toggled
@@ -30,8 +30,9 @@ function injectGenericWonderlandEngine(controller: WLETraceController, injectCal
     });
 }
 
-export async function injectWonderlandEngineRecorder(controller: WLETraceController) {
-    await injectGenericWonderlandEngine(controller, (engine: WonderlandEngine) => {
+export async function injectWonderlandEngineRecorder(recorder: WLETraceRecorder) {
+    await injectGenericWonderlandEngine((engine: WonderlandEngine) => {
+        recorder.setEngine(engine);
         const wasm = engine.wasm;
 
         for (const name of Object.getOwnPropertyNames(wasm)) {
@@ -39,13 +40,13 @@ export async function injectWonderlandEngineRecorder(controller: WLETraceControl
                 continue;
             }
 
-            injectRecorderHooks(controller, wasm, name);
+            injectRecorderHooks(recorder, wasm, name);
         }
     });
 }
 
 export async function injectWonderlandEngineReplayer(controller: WLETraceController) {
-    await injectGenericWonderlandEngine(controller, (engine: WonderlandEngine) => {
+    await injectGenericWonderlandEngine((engine: WonderlandEngine) => {
         const wasm = engine.wasm;
 
         for (const name of Object.getOwnPropertyNames(wasm)) {
@@ -71,7 +72,7 @@ export async function injectWonderlandEngine(controller: WLETraceController): Pr
     controller.registerFeature('trace:emitter:WonderlandEngine.onSceneLoaded');
     controller.registerFeature('debug:dummy-material-ctor-crash');
 
-    const engine = await injectGenericWonderlandEngine(controller, (engine: WonderlandEngine) => {
+    const engine = await injectGenericWonderlandEngine((engine: WonderlandEngine) => {
         const wasm = engine.wasm;
 
         engine.onSceneLoaded.add(() => {

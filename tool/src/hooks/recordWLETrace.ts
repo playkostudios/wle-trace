@@ -1,20 +1,19 @@
-import { WLETraceController, MethodTypeMapsJSON } from '../WLETraceController.js';
+import { MethodTypeMapsJSON } from '../replay/common.js';
+import { WLETraceRecorder } from '../WLETraceRecorder.js';
 import { injectTypedArrayRecorder } from './TypedArray.js';
 import { injectWASMRecorder } from './WASM.js';
 import { injectWonderlandEngineRecorder } from './WonderlandEngine.js';
 
-export async function recordWLETrace(typeMapJSON?: MethodTypeMapsJSON): Promise<WLETraceController> {
-    const controller = new WLETraceController(true);
+export async function recordWLETrace(typeMapJSON?: MethodTypeMapsJSON): Promise<WLETraceRecorder> {
+    const recorder = new WLETraceRecorder();
 
     if (typeMapJSON) {
-        controller.registerTypeMapsFromJSON(typeMapJSON);
+        recorder.registerTypeMapsFromJSON(typeMapJSON);
     }
 
-    injectTypedArrayRecorder(controller);
-    injectWASMRecorder(controller);
-    await injectWonderlandEngineRecorder(controller);
+    injectTypedArrayRecorder(recorder);
+    injectWASMRecorder(recorder);
+    await injectWonderlandEngineRecorder(recorder);
 
-    console.debug("[wle-trace CONTROLLER] Recording mode active. Don't forget to stop recording by calling controller.stopRecording()");
-
-    return controller;
+    return recorder;
 }

@@ -9,17 +9,19 @@ import { guardReclaimComponent } from '../utils/guardReclaim.js';
 import { type WLETraceController } from '../WLETraceController.js';
 import { makeGlobalObjMethodTracer } from '../utils/trace.js';
 import { injectRecorderHooks } from '../inject/injectRecorderHooks.js';
+import { type WLETraceRecorder } from '../WLETraceRecorder.js';
+import { type WLETraceReplayer } from '../WLETraceReplayer.js';
 
-export function injectWASMRecorder(controller: WLETraceController) {
+export function injectWASMRecorder(recorder: WLETraceRecorder) {
     for (const name of Object.getOwnPropertyNames(WASM.prototype)) {
         // we only care about preloaded WASM->JS methods
         if (name.startsWith('_wljs_')) {
-            injectRecorderHooks(controller, WASM.prototype, name);
+            injectRecorderHooks(recorder, WASM.prototype, name);
         }
     }
 }
 
-export function injectWASMReplayer(controller: WLETraceController) {
+export function injectWASMReplayer(replayer: WLETraceReplayer) {
     for (const name of Object.getOwnPropertyNames(WASM.prototype)) {
         if (!name.startsWith('_wljs_')) {
             continue;
@@ -29,7 +31,7 @@ export function injectWASMReplayer(controller: WLETraceController) {
         if (descriptor.value && (typeof descriptor.value) === 'function') {
             injectMethod(WASM.prototype, name, {
                 replaceHook: function (this: WASM, ...args: any[]) {
-                    return controller.markWASMCallbackAsReplayed(name, args);
+                    return replayer.markWASMCallbackAsReplayed(name, args);
                 },
             });
         }

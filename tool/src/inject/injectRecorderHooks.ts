@@ -1,9 +1,9 @@
 import type { WASM } from '@wonderlandengine/api';
 import { getPropertyDescriptor } from './getPropertyDescriptor.js';
 import { injectMethod } from './injectMethod.js';
-import type { WLETraceController } from '../WLETraceController.js';
+import type { WLETraceRecorder } from '../WLETraceRecorder.js';
 
-export function injectRecorderHooks(controller: WLETraceController, proto: any, name: string) {
+export function injectRecorderHooks(recorder: WLETraceRecorder, proto: any, name: string) {
     const isCall = !name.startsWith('_wljs_');
     if (isCall) {
         // only allow _wl_ prefixes, _malloc and _free
@@ -16,10 +16,10 @@ export function injectRecorderHooks(controller: WLETraceController, proto: any, 
     if (descriptor.value && (typeof descriptor.value) === 'function') {
         injectMethod(proto, name, {
             afterHook: (_wasm: WASM, methodName: string, args: any[], retVal: any) => {
-                controller.recordWASMGeneric(isCall, methodName, args, false, retVal);
+                recorder.recordWASMGeneric(isCall, methodName, args, false, retVal);
             },
             exceptionHook: (_wasm: WASM, methodName: string, args: any[], _err: unknown) => {
-                controller.recordWASMGeneric(isCall, methodName, args, true);
+                recorder.recordWASMGeneric(isCall, methodName, args, true);
             }
         });
     }
