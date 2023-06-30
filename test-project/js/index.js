@@ -56,7 +56,7 @@ function testResourceManagement() {
 
 function testRecord() {
     recordWLETrace(wleTypeMaps).then((wleTrace) => {
-        setTimeout(() => wleTrace.stopRecordingAndDownload(), 5000);
+        setTimeout(() => wleTrace.stopAndDownload(), 5000);
 
         normalPostLoad();
     });
@@ -65,7 +65,7 @@ function testRecord() {
 function testReplay() {
     replayWLETrace().then((wleTrace) => {
         // get replay file from user
-        wleTrace.startReplayFromUploadPopup();
+        wleTrace.startFromUploadPopup();
     });
 }
 
