@@ -1,8 +1,7 @@
 import { type WonderlandEngine } from '@wonderlandengine/api';
-import { MAGIC, MAX_REPLAY_FORMAT_VERSION } from './replay/common.js';
+import { MAGIC } from './replay/common.js';
 import { type ReplayBuffer } from './replay/ReplayBuffer.js';
 import { ReplayBufferV1 } from './replay/ReplayBufferV1.js';
-import { tmp16, tmp8 } from './replay/tmp-buf.js';
 
 export class WLETraceReplayer implements ReplayBuffer {
     private engine: WonderlandEngine | null = null;
@@ -38,17 +37,15 @@ export class WLETraceReplayer implements ReplayBuffer {
             }
         }
 
-        const buffer8 = new Uint8Array(buffer, 0, 2);
-        tmp8[0] = buffer8[magicSize];
-        tmp8[1] = buffer8[magicSize + 1];
-        const version = tmp16[0];
-        if (version < 1 || version > MAX_REPLAY_FORMAT_VERSION) {
-            throw new Error(`Invalid demo file; unsupported format version (got ${version}, supported range is 1:${MAX_REPLAY_FORMAT_VERSION})`);
-        }
+        const bufferView = new DataView(buffer);
+        const version = bufferView.getUint16(magicSize);
 
-        // actually start parsing replay file with correct parser
+        // actually start parsing replay file with correct parser, or complain
+        // about invalid versions
         if (version === 1) {
             this.replayBuffer = new ReplayBufferV1(this.engine, buffer, 8);
+        } else {
+            throw new Error(`Invalid demo file; unsupported format version (${version})`);
         }
 
         // start replay

@@ -43,5 +43,3 @@ export interface MethodTypeMapsJSON {
 
 // 0x00DF"WLET" in ASCII; Demo File WLE-Trace
 export const MAGIC = new Uint8Array([ 0x00,0xDF,0x57,0x4C,0x45,0x54 ]);
-export const REPLAY_FORMAT_VERSION = 1;
-export const MAX_REPLAY_FORMAT_VERSION = 1;

@@ -1,6 +1,8 @@
 import { type TypedArrayCtor, type TypedArray, type WonderlandEngine } from '@wonderlandengine/api';
-import { SpecialRetType, type AnyType, type ArgType, type MethodTypeMap, ValueType, MAGIC, REPLAY_FORMAT_VERSION, RetType, CallTypeJSON, ValueTypeJSON, MethodTypeMapsJSON } from './replay/common.js';
+import { SpecialRetType, type AnyType, type ArgType, type MethodTypeMap, ValueType, MAGIC, RetType, CallTypeJSON, ValueTypeJSON, MethodTypeMapsJSON } from './replay/common.js';
 import { WLETraceSentinelBase } from './WLETraceSentinelBase.js';
+
+export const REPLAY_FORMAT_VERSION = 1;
 
 export class WLETraceRecorder extends WLETraceSentinelBase {
     private recordBuffer: null | ArrayBuffer[] = [];
@@ -51,16 +53,24 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
         // encode magic
         chunks.push(MAGIC);
 
-        // encode format version
-        chunks.push(new Uint16Array([ REPLAY_FORMAT_VERSION ]));
+        // encode format version and string dictionary size
+        const remHeaderBuffer = new ArrayBuffer(6);
+        const remHeaderBufferView = new DataView(remHeaderBuffer);
+        remHeaderBufferView.setUint16(0, REPLAY_FORMAT_VERSION);
+        remHeaderBufferView.setUint32(2, this.stringDictionary.length);
+        chunks.push(remHeaderBuffer);
 
-        // encode string dictionary
+        // encode string dictionary data
         const textEncoder = new TextEncoder();
 
-        chunks.push(new Uint32Array([ this.stringDictionary.length ]));
         for (const str of this.stringDictionary) {
             const strBuf = textEncoder.encode(str);
-            chunks.push(new Uint32Array([ strBuf.byteLength ]));
+
+            const sizeBuffer = new ArrayBuffer(4);
+            const sizeBufferView = new DataView(sizeBuffer);
+            sizeBufferView.setUint32(0, strBuf.byteLength);
+
+            chunks.push(sizeBuffer);
             chunks.push(strBuf);
         }
 
@@ -102,7 +112,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
     }
 
     private recordValue(val: unknown, expectedType: AnyType) {
-        let enc;
+        let enc: ArrayBuffer;
         const valType = typeof val;
         if (expectedType === SpecialRetType.Void) {
             if (val !== undefined) {
@@ -115,7 +125,8 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
                 // console.warn(`[wle-trace RECORDER] casting value to boolean; boolean expected`);
             }
 
-            enc = new Uint8Array([ val ? 1 : 0 ]);
+            enc = new ArrayBuffer(1);
+            new DataView(enc).setUint8(0, val ? 1 : 0);
         } else if (expectedType === ValueType.Uint32 || expectedType === ValueType.Int32 || expectedType === ValueType.Float32 || expectedType === ValueType.Float64 || expectedType === ValueType.Pointer) {
             if (valType !== 'number') {
                 if (expectedType === ValueType.Pointer && val === null) {
@@ -134,13 +145,17 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
             }
 
             if (expectedType === ValueType.Uint32 || expectedType === ValueType.Pointer) {
-                enc = new Uint32Array([ val as number ]);
+                enc = new ArrayBuffer(4);
+                new DataView(enc).setUint32(0, val as number);
             } else if (expectedType === ValueType.Int32) {
-                enc = new Int32Array([ val as number ]);
+                enc = new ArrayBuffer(4);
+                new DataView(enc).setInt32(0, val as number);
             } else if (expectedType === ValueType.Float32) {
-                enc = new Float32Array([ val as number ]);
+                enc = new ArrayBuffer(4);
+                new DataView(enc).setFloat32(0, val as number);
             } else {
-                enc = new Float64Array([ val as number ]);
+                enc = new ArrayBuffer(8);
+                new DataView(enc).setFloat64(0, val as number);
             }
         } else if (expectedType === ValueType.String) {
             if (valType !== 'string') {
@@ -148,7 +163,8 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
                 // console.warn(`[wle-trace RECORDER] casting value to string; string expected`);
             }
 
-            enc = new Uint32Array([ this.getStringIdx(val as string) ]);
+            enc = new ArrayBuffer(4);
+            new DataView(enc).setUint32(0, this.getStringIdx(val as string));
         } else {
             throw new Error('Invalid expected type');
         }
@@ -174,20 +190,10 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
         // 1    ; argCount
         const argCount = args.length;
         const headerBuffer = new ArrayBuffer(6);
-        const headerView8 = new Uint8Array(headerBuffer);
-        const headerViewMethodIdx = new Uint32Array(headerBuffer, 0, 1);
-
-        // XXX temporarily write the 32-bit uint to the beginning, but then
-        //     shift right by 1 byte (we can only have offsets multiple of 4 for
-        //     uint32)
-        headerViewMethodIdx[0] = methodIdx;
-        headerView8[4] = headerView8[3];
-        headerView8[3] = headerView8[2];
-        headerView8[2] = headerView8[1];
-        headerView8[1] = headerView8[0];
-
-        headerView8[0] = (isCall ? 1 : 0) | (threw ? 2 : 0);
-        headerView8[5] = argCount;
+        const headerBufferView = new DataView(headerBuffer);
+        headerBufferView.setUint8(0, (isCall ? 1 : 0) | (threw ? 2 : 0));
+        headerBufferView.setUint32(1, methodIdx);
+        headerBufferView.setUint8(5, argCount);
 
         this.recordBuffer.push(headerBuffer);
 
@@ -234,13 +240,16 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
                     thisMethodTypeMap.push(SpecialRetType.Void);
                 } else if (retType === 'number') {
                     thisMethodTypeMap.push(ValueType.Float64);
-                    enc = new Float64Array([ retVal ]);
+                    enc = new ArrayBuffer(8);
+                    new DataView(enc).setFloat64(0, retVal);
                 } else if (retType === 'boolean') {
                     thisMethodTypeMap.push(ValueType.Boolean);
-                    enc = new Uint8Array([ retVal ]);
+                    enc = new ArrayBuffer(1);
+                    new DataView(enc).setUint8(0, retVal);
                 } else if (retType === 'string') {
                     thisMethodTypeMap.push(ValueType.String);
-                    enc = new Uint32Array([ this.getStringIdx(retType) ]);
+                    enc = new ArrayBuffer(4);
+                    new DataView(enc).setUint32(0, this.getStringIdx(retVal));
                 } else {
                     debugger;
                     throw new Error(`Unexpected return type in WASM call${isCall ? '' : 'back'}`);
@@ -256,13 +265,16 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
                 let enc;
                 if (argType === 'number') {
                     thisMethodTypeMap.push(ValueType.Float64);
-                    enc = new Float64Array([ arg ]);
+                    enc = new ArrayBuffer(8);
+                    new DataView(enc).setFloat64(0, arg);
                 } else if (argType === 'boolean') {
                     thisMethodTypeMap.push(ValueType.Boolean);
-                    enc = new Uint8Array([ arg ]);
+                    enc = new ArrayBuffer(1);
+                    new DataView(enc).setUint8(0, arg);
                 } else if (argType === 'string') {
                     thisMethodTypeMap.push(ValueType.String);
-                    enc = new Uint32Array([ this.getStringIdx(argType) ]);
+                    enc = new ArrayBuffer(4);
+                    new DataView(enc).setUint32(0, this.getStringIdx(arg));
                 } else {
                     debugger;
                     throw new Error(`Unexpected argument type in WASM call${isCall ? '' : 'back'}`);
@@ -308,8 +320,13 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
         // 4    ; offset
         // 4    ; buffer length
         // console.debug('[wle-trace RECORDER] record dma', out.byteLength, '@', offset);
-        this.recordBuffer.push(new Uint8Array([ 4 ]));
-        this.recordBuffer.push(new Uint32Array([ offset, srcCopyCast.byteLength ]));
+        const headerBuffer = new ArrayBuffer(9);
+        const headerBufferView = new DataView(headerBuffer);
+        headerBufferView.setUint8(0, 4);
+        headerBufferView.setUint8(1, offset);
+        headerBufferView.setUint8(5, srcCopyCast.byteLength);
+
+        this.recordBuffer.push(headerBuffer);
 
         // add buffer to replay buffer
         this.recordBuffer.push(srcCopyCast);
@@ -317,12 +334,24 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
 
     private encodeMethodTypeMap(chunks: ArrayBuffer[], methodTypeMap: MethodTypeMap) {
         // method type map size
-        chunks.push(new Uint32Array([methodTypeMap.size]));
+        const sizeBuffer = new ArrayBuffer(4);
+        const sizeBufferView = new DataView(sizeBuffer);
+        sizeBufferView.setUint32(0, methodTypeMap.size)
+        chunks.push(sizeBuffer);
 
         // method types
         for (const [methodIdx, argTypes] of methodTypeMap) {
-            chunks.push(new Uint32Array([ methodIdx, argTypes.length ]));
-            chunks.push(new Uint8Array(argTypes));
+            const methodBuffer = new ArrayBuffer(8 + argTypes.length);
+            const methodBufferView = new DataView(methodBuffer);
+            methodBufferView.setUint32(0, methodIdx);
+            methodBufferView.setUint32(4, argTypes.length);
+
+            let i = 8;
+            for (const type of argTypes) {
+                methodBufferView.setUint8(i++, type);
+            }
+
+            chunks.push(methodBuffer);
         }
     }
 
