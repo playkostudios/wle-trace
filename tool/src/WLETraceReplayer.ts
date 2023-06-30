@@ -43,7 +43,7 @@ export class WLETraceReplayer implements ReplayBuffer {
         // actually start parsing replay file with correct parser, or complain
         // about invalid versions
         if (version === 1) {
-            this.replayBuffer = new ReplayBufferV1(this.engine, buffer, 8);
+            this.replayBuffer = new ReplayBufferV1(this.engine, buffer, magicSize + 2);
         } else {
             throw new Error(`Invalid demo file; unsupported format version (${version})`);
         }
@@ -62,7 +62,7 @@ export class WLETraceReplayer implements ReplayBuffer {
             const file = fileIn.files?.[0];
             if (file) {
                 const arrayBuffer = await file.arrayBuffer();
-                this.start(new Uint8Array(arrayBuffer));
+                this.start(arrayBuffer);
             }
         });
 

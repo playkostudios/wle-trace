@@ -202,16 +202,18 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
         let thisMethodTypeMap = methodTypeMap.get(methodIdx);
         if (thisMethodTypeMap) {
             if (!threw) {
-                // double-check that ret type is compatible and encode
-                this.recordValue(retVal, thisMethodTypeMap[0]);
+                const retType = thisMethodTypeMap[0];
+                if (retType !== SpecialRetType.Void) {
+                    // double-check that ret type is compatible and encode
+                    this.recordValue(retVal, retType);
+                }
             }
 
             // double-check that arg types are compatible and encode
-            // XXX first index is reserved for return types in callbacks
-            let mapOffset = isCall ? 0 : 1;
+            // XXX first index is reserved for return types
             const argCount = args.length;
             for (let i = 0; i < argCount; i++) {
-                this.recordValue(args[i], thisMethodTypeMap[i + mapOffset]);
+                this.recordValue(args[i], thisMethodTypeMap[i + 1]);
             }
         } else {
             console.warn(`[wle-trace RECORDER] "${methodName}" is not a registered call${isCall ? '' : 'back'}. Guessing argument types${isCall ? '' : ' and return type'} from values`);

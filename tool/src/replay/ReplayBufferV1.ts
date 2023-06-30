@@ -25,7 +25,7 @@ export class ReplayBufferV1 implements ReplayBuffer {
         for (let i = 0; i < dictSize; i++) {
             const strLen = this.bufferView.getUint32(this.offset);
             this.offset += 4;
-            this.stringDictionary.push(textDecoder.decode(new Uint8Array(buffer, this.offset, strLen)));
+            this.stringDictionary.push(textDecoder.decode(new Uint8Array(buffer, this.offset + headerSize, strLen)));
             this.offset += strLen;
         }
 
@@ -103,19 +103,24 @@ export class ReplayBufferV1 implements ReplayBuffer {
             if (eventType === 0 || eventType === 2) {
                 // XXX we will be visiting this part of the buffer again, go
                 //     back
-                const methodName = this.stringDictionary[this.bufferView.getUint32(this.offset)];
-                console.debug('replay waiting for callback...', methodName);
+                const methodIdx = this.bufferView.getUint32(this.offset);
+                const methodName = this.stringDictionary[methodIdx];
+                console.debug('replay waiting for callback...', methodName, 'str idx', methodIdx);
                 this.offset--;
                 break; // callback, wait for a callback-as-replayed mark
             } else if (eventType === 1 || eventType === 3) {
                 // wasm call
                 // parse method name
                 const methodIdx = this.bufferView.getUint32(this.offset);
-                const methodName = this.stringDictionary[methodIdx];
                 this.offset += 4;
 
+                const methodName = this.stringDictionary[methodIdx];
+                if (methodName === undefined) {
+                    throw new Error(`Missing string index ${methodIdx} for method name`);
+                }
+
                 // get method type
-                const types = this.callbackTypeMap.get(methodIdx);
+                const types = this.callTypeMap.get(methodIdx);
                 if (types === undefined) {
                     throw new Error('WASM call is not registered in type map');
                 }
@@ -137,7 +142,7 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 }
 
                 // do call
-                console.debug('replay call', methodName);
+                console.debug('replay call', methodName, expectedRetVal, ...args);
                 const retVal = (this.engine.wasm as unknown as Record<string, (...args: any[]) => any>)[methodName](...args);
 
                 // verify return value
@@ -195,9 +200,16 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 this.offset += 1;
                 break;
             case ValueType.String:
-                val = this.stringDictionary[this.bufferView.getUint32(this.offset)];
+            {
+                const strIdx = this.bufferView.getUint32(this.offset);
+                val = this.stringDictionary[strIdx];
+                if (val === undefined) {
+                    throw new Error(`Missing string index ${strIdx} for value`);
+                }
+
                 this.offset += 4;
                 break;
+            }
             default:
                 throw new Error(`Unknown ValueType: ${type}`);
         }
