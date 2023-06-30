@@ -1,12 +1,12 @@
-import { WLETraceController } from '../WLETraceController.js';
+import { WLETraceReplayer } from '../WLETraceReplayer.js';
 import { injectWASMReplayer } from './WASM.js';
 import { injectWonderlandEngineReplayer } from './WonderlandEngine.js';
 
-export async function replayWLETrace(): Promise<WLETraceController> {
-    const controller = new WLETraceController();
+export async function replayWLETrace(): Promise<WLETraceReplayer> {
+    const replayer = new WLETraceReplayer();
 
-    injectWASMReplayer(controller);
-    await injectWonderlandEngineReplayer(controller);
+    injectWASMReplayer(replayer);
+    await injectWonderlandEngineReplayer(replayer);
 
-    return controller;
+    return replayer;
 }
