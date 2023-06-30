@@ -1,4 +1,4 @@
-import { type TypedArray, type WonderlandEngine } from '@wonderlandengine/api';
+import { TypedArrayCtor, type TypedArray, type WonderlandEngine } from '@wonderlandengine/api';
 import { triggerBreakpoint } from './utils/triggerBreakpoint.js';
 
 export type FeatureToggleHandler = (id: string, isOn: boolean) => void;
@@ -222,13 +222,13 @@ export class WLETraceController {
         const valType = typeof val;
         if (expectedType === SpecialRetType.Void) {
             if (val !== undefined) {
-                console.warn(`[wle-trace] ignoring value; void expected, but got a non-undefined value`);
+                // console.warn(`[wle-trace] ignoring value; void expected, but got a non-undefined value`);
             }
 
             return;
         } else if (expectedType === ValueType.Boolean) {
             if (valType !== 'boolean') {
-                console.warn(`[wle-trace] casting value to boolean; boolean expected`);
+                // console.warn(`[wle-trace] casting value to boolean; boolean expected`);
             }
 
             enc = new Uint8Array([ val ? 1 : 0 ]);
@@ -245,7 +245,7 @@ export class WLETraceController {
                         throw new Error('Impossible cast to number');
                     }
 
-                    console.warn(`[wle-trace] casting value to number; number expected`);
+                    // console.warn(`[wle-trace] casting value to number; number expected`);
                 }
             }
 
@@ -261,7 +261,7 @@ export class WLETraceController {
         } else if (expectedType === ValueType.String) {
             if (valType !== 'string') {
                 val = String(val);
-                console.warn(`[wle-trace] casting value to string; string expected`);
+                // console.warn(`[wle-trace] casting value to string; string expected`);
             }
 
             enc = new Uint32Array([ this._getStringIdx(val as string) ]);
@@ -285,7 +285,7 @@ export class WLETraceController {
         // prepare header of method call(back). format:
         // bytes; desc
         // -----------
-        // 1    ; eventType (0 if callback, 1 if call, 4 if dma (not used here), 2 if throwing call, 3 if throwing callback)
+        // 1    ; eventType (0 if callback, 1 if call, 2 if throwing callback, 3 if throwing call, 4 if dma (not used here))
         // 4    ; methodIdx
         // 1    ; argCount
         const argCount = args.length;
@@ -391,42 +391,44 @@ export class WLETraceController {
         }
     }
 
-    recordWASMDMA(dst: ArrayBuffer | TypedArray, src: ArrayBuffer | TypedArray, offset: number) {
+    recordWASMDMA(dst: TypedArray, src: ArrayLike<number>, offset: number) {
         if (!this.recordBuffer || this.engine === null) {
             return;
         }
 
         // verify that destination is the heap
-        let byteLength = Math.min(src.byteLength, dst.byteLength - offset);
-        if (ArrayBuffer.isView(dst)) {
-            offset += dst.byteOffset;
-            dst = dst.buffer;
-        }
+        const dstBuf = dst.buffer;
+        offset += dst.byteOffset;
 
-        if (byteLength <= 0 || dst !== this.engine.wasm.HEAP8?.buffer) {
+        if ((dst.byteLength - offset) <= 0 || src.length === 0 || dstBuf !== this.engine.wasm.HEAP8?.buffer) {
             return;
         }
+
+        // prepare buffer copy
+        let srcCopy: TypedArray;
+        if (ArrayBuffer.isView(src)) {
+            // typed array src
+            const srcTA = src as TypedArray;
+            srcCopy = srcTA.slice();
+        } else {
+            // array src
+            srcCopy = new (dst.constructor as TypedArrayCtor)(src);
+        }
+
+        const srcCopyCast = new Uint8Array(srcCopy.buffer, 0, srcCopy.byteLength);
 
         // prepare header of dma set. format:
         // bytes; desc
         // -----------
-        // 1    ; eventType (0 if callback (not used here), 1 if call (not used here), 2 if dma)
+        // 1    ; eventType (0 if callback (not used here), 1 if call (not used here), 2 if throwing callback (not used here), 3 if throwing call (not used here), 4 if dma)
         // 4    ; offset
         // 4    ; buffer length
-        this.recordBuffer.push(new Uint8Array([ 2 ]));
-        this.recordBuffer.push(new Uint32Array([ offset, byteLength ]));
-
-        // console.debug('record dma', byteLength, '@', offset);
+        // console.debug('record dma', out.byteLength, '@', offset);
+        this.recordBuffer.push(new Uint8Array([ 4 ]));
+        this.recordBuffer.push(new Uint32Array([ offset, srcCopyCast.byteLength ]));
 
         // add buffer to replay buffer
-        const srcCopy = new Uint8Array(byteLength);
-        if (ArrayBuffer.isView(src)) {
-            srcCopy.set(new Uint8Array(src.buffer, src.byteOffset, src.byteLength));
-        } else {
-            srcCopy.set(new Uint8Array(src, 0, byteLength));
-        }
-
-        this.recordBuffer.push(srcCopy);
+        this.recordBuffer.push(srcCopyCast);
     }
 
     _continueReplayV1() {
@@ -708,7 +710,10 @@ export class WLETraceController {
         this.callbackTypeMap.clear();
 
         // tie everything up
-        chunks.push(...this.recordBuffer);
+        for (const chunk of this.recordBuffer) {
+            chunks.push(chunk);
+        }
+
         this.recordBuffer = null;
 
         return new Blob(chunks);
