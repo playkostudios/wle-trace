@@ -21,7 +21,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
         });
     }
 
-    get recording() {
+    get recording(): boolean {
         return this.engine !== null && this.recordBuffer !== null;
     }
 

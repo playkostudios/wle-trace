@@ -11,6 +11,7 @@ import { handleScenePostReplace } from '../utils/handleScenePostReplace.js';
 import { makeGlobalObjMethodTracer } from '../utils/trace.js';
 import { injectRecorderHooks } from '../inject/injectRecorderHooks.js';
 import { WLETraceRecorder } from '../WLETraceRecorder.js';
+import { WLETraceReplayer } from '../WLETraceReplayer.js';
 
 function injectGenericWonderlandEngine(injectCallback: (engine: WonderlandEngine) => void): Promise<WonderlandEngine> {
     return new Promise((resolve, _reject) => {
@@ -32,7 +33,7 @@ function injectGenericWonderlandEngine(injectCallback: (engine: WonderlandEngine
 
 export async function injectWonderlandEngineRecorder(recorder: WLETraceRecorder) {
     await injectGenericWonderlandEngine((engine: WonderlandEngine) => {
-        recorder.setEngine(engine);
+        recorder.start(engine);
         const wasm = engine.wasm;
 
         for (const name of Object.getOwnPropertyNames(wasm)) {
@@ -45,8 +46,9 @@ export async function injectWonderlandEngineRecorder(recorder: WLETraceRecorder)
     });
 }
 
-export async function injectWonderlandEngineReplayer(controller: WLETraceController) {
+export async function injectWonderlandEngineReplayer(replayer: WLETraceReplayer) {
     await injectGenericWonderlandEngine((engine: WonderlandEngine) => {
+        replayer.setEngine(engine);
         const wasm = engine.wasm;
 
         for (const name of Object.getOwnPropertyNames(wasm)) {
@@ -58,7 +60,7 @@ export async function injectWonderlandEngineReplayer(controller: WLETraceControl
             if (descriptor.value && (typeof descriptor.value) === 'function') {
                 injectMethod(wasm, name, {
                     replaceHook: function (this: WASM, ...args: any[]) {
-                        return controller.markWASMCallbackAsReplayed(name, args);
+                        return replayer.markCallbackAsReplayed(name, args);
                     },
                 });
             }

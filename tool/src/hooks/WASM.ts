@@ -31,7 +31,7 @@ export function injectWASMReplayer(replayer: WLETraceReplayer) {
         if (descriptor.value && (typeof descriptor.value) === 'function') {
             injectMethod(WASM.prototype, name, {
                 replaceHook: function (this: WASM, ...args: any[]) {
-                    return replayer.markWASMCallbackAsReplayed(name, args);
+                    return replayer.markCallbackAsReplayed(name, args);
                 },
             });
         }

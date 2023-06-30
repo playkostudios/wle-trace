@@ -2,15 +2,18 @@ export enum ValueType {
     Uint32 = 0,
     Int32 = 1,
     Float32 = 2,
-    Float64 = 3,
-    Pointer = 4,
-    Boolean = 5,
-    String = 6,
+    Float64 = 4,
+    Pointer = 5,
+    Boolean = 6,
+    String = 7,
 };
 
 export enum SpecialRetType {
     Void = 255,
 };
+
+export const VALUE_TYPE_MAX = 7;
+export const SPECIAL_TYPE_MIN = 255;
 
 export type ArgType = ValueType;
 export type RetType = SpecialRetType | ValueType;

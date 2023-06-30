@@ -33,7 +33,7 @@ export class WLETraceController extends WLETraceSentinelBase {
             }
 
             triggerBreakpoint(this, 'sentinel');
-        })
+        });
     }
 
     get maxQueuedTraces(): number {
