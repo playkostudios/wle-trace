@@ -124,6 +124,12 @@ export class WLETraceReplayer implements ReplayBuffer, WLETraceEarlyInjector {
         wasmRO.wasm = wasmData;
         wasmRO.canvas = glCanvas;
 
+        Object.defineProperty(wasm, 'worker', {
+            get() {
+                throw new Error('You are trying to load a threaded runtime file, which is not supported by wle-trace yet. Please re-record the demo file in a single-threaded runtime');
+            },
+        })
+
         const engine = new WonderlandEngine(wasm, loadingScreenData);
         (engine as unknown as { scene: DummyScene }).scene = new DummyScene();
 
