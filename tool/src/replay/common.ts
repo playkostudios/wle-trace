@@ -2,32 +2,42 @@ export enum ValueType {
     Uint32 = 0,
     Int32 = 1,
     Float32 = 2,
-    Float64 = 4,
-    Pointer = 5,
-    Boolean = 6,
-    String = 7,
+    Float64 = 3,
+    Boolean = 4,
+    String = 5,
+    Pointer = 6,
+    NullablePointer = 7,
+    AttributeOffset = 8,
+    AttributeStructPointer = 9,
+    PointerFree = 10,
+    PointerAlloc = 11,
+    PointerAllocSize = 12,
+    PointerAllocEnd = 13,
+    PointerTemp = 14,
+    Void = 15,
+    PointerPreStart = 128,
+    PointerPreEnd = 255,
 };
 
-export enum SpecialRetType {
-    Void = 255,
-};
-
-export const VALUE_TYPE_MAX = 7;
-export const SPECIAL_TYPE_MIN = 255;
-
-export type ArgType = ValueType;
-export type RetType = SpecialRetType | ValueType;
-export type AnyType = ArgType | RetType;
-export type MethodTypeMap = Map<number, AnyType[]>;
+export type MethodTypeMap = Map<number, ValueType[]>;
 
 export enum ValueTypeJSON {
     Uint32 = 'u32',
     Int32 = 'i32',
     Float32 = 'f32',
     Float64 = 'f64',
-    Pointer = 'ptr',
     Boolean = 'bool',
     String = 'str',
+    Pointer = 'ptr',
+    NullablePointer = 'nullable_ptr',
+    AttributeOffset = 'attr_off',
+    AttributeStructPointer = 'attr_struct_ptr',
+    PointerFree = 'ptr_free',
+    PointerAlloc = 'ptr_alloc',
+    PointerAllocSize = 'ptr_alloc_size',
+    PointerAllocEnd = 'ptr_alloc_end',
+    PointerTemp = 'ptr_temp',
+    PointerPrePrefix = 'ptr_pre_',
 }
 
 export interface CallTypeJSON {

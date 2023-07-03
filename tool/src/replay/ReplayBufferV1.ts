@@ -1,13 +1,13 @@
 import { type WASM } from '@wonderlandengine/api';
-import { ValueType, type AnyType, type ArgType, type MethodTypeMap, SpecialRetType, VALUE_TYPE_MAX, SPECIAL_TYPE_MIN } from './common.js';
+import { ValueType, type MethodTypeMap } from './common.js';
 import { ReplayBuffer } from './ReplayBuffer.js';
 
 export class ReplayBufferV1 implements ReplayBuffer {
     private bufferView: DataView;
     private offset = 0;
     private stringDictionary = new Array<string>();
-    private callTypeMap: MethodTypeMap = new Map<number, ArgType[]>();
-    private callbackTypeMap: MethodTypeMap = new Map<number, AnyType[]>();
+    private callTypeMap: MethodTypeMap = new Map<number, ValueType[]>();
+    private callbackTypeMap: MethodTypeMap = new Map<number, ValueType[]>();
 
     get ended(): boolean {
         return this.offset >= this.buffer.byteLength;
@@ -68,7 +68,7 @@ export class ReplayBufferV1 implements ReplayBuffer {
         let retVal;
         if (!threw) {
             const retType = types[0];
-            if (retType !== SpecialRetType.Void) {
+            if (retType !== ValueType.Void) {
                 retVal = this.decodeValue(retType);
             }
         }
@@ -126,7 +126,7 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 }
 
                 // parse expected return value
-                let hasRetValue = eventType !== 3 && types[0] !== SpecialRetType.Void;
+                let hasRetValue = eventType !== 3 && types[0] !== ValueType.Void;
                 let expectedRetVal;
 
                 if (hasRetValue) {
@@ -218,26 +218,11 @@ export class ReplayBufferV1 implements ReplayBuffer {
         return val;
     }
 
-    private decodeAnyType(allowSpecial: true): AnyType;
-    private decodeAnyType(allowSpecial: false): ValueType;
-    private decodeAnyType(allowSpecial: boolean): AnyType {
+    private decodeType(): ValueType {
         const type = this.bufferView.getUint8(this.offset);
         this.offset++;
-
-        // sanitise
-        if (allowSpecial) {
-            if (type > VALUE_TYPE_MAX && type < SPECIAL_TYPE_MIN) {
-                throw new Error(`Unknown AnyType: ${type}`);
-            }
-
-            return type as AnyType;
-        } else {
-            if (type > VALUE_TYPE_MAX) {
-                throw new Error(`Unknown ValueType: ${type}`);
-            }
-
-            return type as ValueType;
-        }
+        return type;
+        // TODO sanitize
     }
 
     private decodeMethodTypeMap(methodTypeMap: MethodTypeMap) {
@@ -255,11 +240,11 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 throw new Error('Expected at least one AnyType for the return value');
             }
 
-            const types = [this.decodeAnyType(true)];
+            const types = [this.decodeType()];
             const argCount = retArgCount - 1;
 
             for (let a = 0; a < argCount; a++) {
-                types.push(this.decodeAnyType(false));
+                types.push(this.decodeType());
             }
 
             methodTypeMap.set(methodIdx, types);
