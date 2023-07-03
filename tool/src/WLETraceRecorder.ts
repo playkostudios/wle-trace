@@ -1,15 +1,19 @@
-import { type TypedArrayCtor, type TypedArray, type WonderlandEngine } from '@wonderlandengine/api';
+import { type TypedArrayCtor, type TypedArray, type WASM } from '@wonderlandengine/api';
 import { SpecialRetType, type AnyType, type ArgType, type MethodTypeMap, ValueType, MAGIC, RetType, CallTypeJSON, ValueTypeJSON, MethodTypeMapsJSON } from './replay/common.js';
 import { WLETraceSentinelBase } from './WLETraceSentinelBase.js';
+import { type WLETraceEarlyInjector } from './WLETraceEarlyInjector.js';
+import { lateInjectWonderlandEngineRecorder } from './hooks/WonderlandEngine.js';
 
 export const REPLAY_FORMAT_VERSION = 1;
 
-export class WLETraceRecorder extends WLETraceSentinelBase {
+export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEarlyInjector {
     private recordBuffer: null | ArrayBuffer[] = [];
-    private engine: WonderlandEngine | null = null;
+    private _wasm: WASM | null = null;
     private stringDictionary = new Array<string>();
     private callTypeMap: MethodTypeMap = new Map<number, ArgType[]>();
     private callbackTypeMap: MethodTypeMap = new Map<number, AnyType[]>();
+    private _ready: Array<[() => void, (err: unknown) => void]> | boolean = [];
+
     stopAndDownloadOnSentinel = false;
 
     constructor() {
@@ -23,19 +27,59 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
         });
     }
 
-    get recording(): boolean {
-        return this.engine !== null && this.recordBuffer !== null;
+    waitForReady(): Promise<void> {
+        return new Promise((resolve, reject) => {
+            if (this._ready === true) {
+                resolve();
+            } else if (this._ready === false) {
+                reject(new Error('Error occurred while injecting early hooks. Check console for details'));
+            } else {
+                this._ready.push([resolve, reject]);
+            }
+        });
     }
 
-    start(engine: WonderlandEngine) {
-        if (this.engine) {
-            throw new Error('Already recording');
-        } else if (!this.recordBuffer) {
-            throw new Error("Can't reuse recorder");
+    private async lateInject() {
+        try {
+            await lateInjectWonderlandEngineRecorder(this);
+        } catch (err) {
+            if (Array.isArray(this._ready)) {
+                for (const [_resolve, reject] of this._ready) {
+                    reject(err);
+                }
+            }
+
+            this._ready = false;
+            return;
         }
 
-        this.engine = engine;
-        console.debug("[wle-trace RECORDER] Started recording. Don't forget to stop recording by calling recorder.stop()");
+        console.debug('[wle-trace RECORDER] Late init hook called; recorder is ready for user-defined initialization');
+
+        if (Array.isArray(this._ready)) {
+            for (const [resolve, _reject] of this._ready) {
+                resolve();
+            }
+        }
+
+        this._ready = true;
+    }
+
+    get wasm(): WASM | null {
+        return this._wasm;
+    }
+
+    set wasm(wasm: WASM) {
+        if (this._wasm) {
+            throw new Error('WASM instance already set; are you reusing a replayer?');
+        }
+
+        this._wasm = wasm;
+        this.lateInject();
+        console.debug("[wle-trace RECORDER] Early init hook called; started recording. Don't forget to stop recording by calling recorder.stop()");
+    }
+
+    get recording(): boolean {
+        return this._wasm !== null && this.recordBuffer !== null;
     }
 
     stop(): Blob {
@@ -46,7 +90,6 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
         console.debug('[wle-trace RECORDER] Stopped recording');
         const recordBuffer = this.recordBuffer!;
         this.recordBuffer = null;
-        this.engine = null;
 
         const chunks: ArrayBuffer[] = [];
 
@@ -96,7 +139,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
         const blobURL = window.URL.createObjectURL(this.stop());
         const link = document.createElement('a');
         link.href = blobURL;
-        link.download = `demo-${Date.now()}.wletdf`;
+        link.download = `demo-${Date.now()}.wletd`;
         link.click();
         window.URL.revokeObjectURL(blobURL);
     }
@@ -173,7 +216,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
     }
 
     recordWASMGeneric(isCall: boolean, methodName: string, args: any[], threw: boolean, retVal?: any) {
-        if (!this.recordBuffer || this.engine === null) {
+        if (!this.recordBuffer || this._wasm === null) {
             return;
         }
 
@@ -287,7 +330,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
     }
 
     recordWASMDMA(dst: TypedArray, src: ArrayLike<number>, offset: number) {
-        if (!this.recordBuffer || this.engine === null) {
+        if (!this.recordBuffer || this._wasm === null) {
             return;
         }
 
@@ -295,7 +338,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
         const dstBuf = dst.buffer;
         offset += dst.byteOffset;
 
-        if ((dst.byteLength - offset) <= 0 || src.length === 0 || dstBuf !== this.engine.wasm.HEAP8?.buffer) {
+        if ((dst.byteLength - offset) <= 0 || src.length === 0 || dstBuf !== this._wasm.HEAP8?.buffer) {
             return;
         }
 
@@ -322,8 +365,8 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
         const headerBuffer = new ArrayBuffer(9);
         const headerBufferView = new DataView(headerBuffer);
         headerBufferView.setUint8(0, 4);
-        headerBufferView.setUint8(1, offset);
-        headerBufferView.setUint8(5, srcCopyCast.byteLength);
+        headerBufferView.setUint32(1, offset);
+        headerBufferView.setUint32(5, srcCopyCast.byteLength);
 
         this.recordBuffer.push(headerBuffer);
 

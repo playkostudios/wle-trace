@@ -3,5 +3,5 @@
 import './hooks/orig-properties.js';
 export { injectWLETrace } from './hooks/injectWLETrace.js';
 export { recordWLETrace } from './hooks/recordWLETrace.js';
-export { replayWLETrace } from './hooks/replayWLETrace.js';
+export { WLETraceReplayer } from './WLETraceReplayer.js';
 export type { WLETraceController } from './WLETraceController.js';

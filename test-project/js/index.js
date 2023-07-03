@@ -11,7 +11,7 @@
  *     - `wle:auto-benchmark:start` and `wle:auto-benchmark:end`: Append the benchmarking code
  */
 
-import { injectWLETrace, recordWLETrace, replayWLETrace } from '@playkostudios/wle-trace';
+import { WLETraceReplayer, injectWLETrace, recordWLETrace } from '@playkostudios/wle-trace';
 import {loadRuntime} from '@wonderlandengine/api';
 import * as API from '@wonderlandengine/api'; // Deprecated: Backward compatibility.
 import * as wleTypeMaps from './wleTypeMaps.json';
@@ -33,6 +33,8 @@ function testSentinel() {
 
         normalPostLoad();
     });
+
+    normalLoadRuntime();
 }
 
 function testResourceManagement() {
@@ -52,6 +54,8 @@ function testResourceManagement() {
 
         normalPostLoad();
     });
+
+    normalLoadRuntime();
 }
 
 function testRecord() {
@@ -60,24 +64,19 @@ function testRecord() {
 
         normalPostLoad();
     });
+
+    normalLoadRuntime();
 }
 
-function testReplay() {
-    replayWLETrace().then((wleTrace) => {
-        // get replay file from user
-        wleTrace.startFromUploadPopup();
-    });
+async function testReplay() {
+    const replayer = await WLETraceReplayer.fromPopupUploadedRuntime();
+    replayer.startFromUploadPopup();
 }
-
-// testSentinel();
-// testResourceManagement();
-testRecord();
-// testReplay();
 
 /* wle:auto-constants:start */
 const RuntimeOptions = {
-    physx: true,
-    loader: true,
+    physx: false,
+    loader: false,
     xrFramebufferScaleFactor: 1,
     canvas: 'canvas',
 };
@@ -89,9 +88,18 @@ const Constants = {
 };
 /* wle:auto-constants:end */
 
-const engine = await loadRuntime(Constants.RuntimeBaseName, RuntimeOptions);
-Object.assign(engine, API); // Deprecated: Backward compatibility.
-window.WL = engine; // Deprecated: Backward compatibility.
+let engine;
+
+// testSentinel();
+// testResourceManagement();
+// testRecord();
+testReplay();
+
+async function normalLoadRuntime() {
+    engine = await loadRuntime(Constants.RuntimeBaseName, {...RuntimeOptions, threads: false});
+    Object.assign(engine, API); // Deprecated: Backward compatibility.
+    window.WL = engine; // Deprecated: Backward compatibility.
+}
 
 async function normalPostLoad() {
     engine.onSceneLoaded.once(() => {

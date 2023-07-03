@@ -13,59 +13,56 @@ import { injectRecorderHooks } from '../inject/injectRecorderHooks.js';
 import { WLETraceRecorder } from '../WLETraceRecorder.js';
 import { WLETraceReplayer } from '../WLETraceReplayer.js';
 
-function injectGenericWonderlandEngine(injectCallback: (engine: WonderlandEngine) => void): Promise<WonderlandEngine> {
+function injectWonderlandEngineLateHook(injectCallback?: (engine: WonderlandEngine) => void): Promise<WonderlandEngine> {
     return new Promise((resolve, _reject) => {
         // XXX _wl_ methods (not _wljs_) are only added after loadRuntime is
         //     called. to hook them we have to hook into an init function AND
         //     THEN inject to those now-present methods
         injectMethod(WonderlandEngine.prototype, '_init', {
             afterHook: (engine: WonderlandEngine, _methodName: string, _args: any[], _retVal: any) => {
-                injectCallback(engine);
+                if (injectCallback) {
+                    injectCallback(engine);
+                }
 
                 // mark injections as done (some features will be auto-toggled
                 // by the user here)
-                console.debug('[wle-trace CONTROLLER] ready; engine loaded, all hooks injected');
                 resolve(engine);
             },
         });
     });
 }
 
-export async function injectWonderlandEngineRecorder(recorder: WLETraceRecorder) {
-    await injectGenericWonderlandEngine((engine: WonderlandEngine) => {
-        recorder.start(engine);
-        const wasm = engine.wasm;
+export async function lateInjectWonderlandEngineRecorder(recorder: WLETraceRecorder): Promise<void> {
+    const wasm = recorder.wasm;
 
-        for (const name of Object.getOwnPropertyNames(wasm)) {
-            if (!name.startsWith('_')) {
-                continue;
-            }
-
-            injectRecorderHooks(recorder, wasm, name);
+    for (const name of Object.getOwnPropertyNames(wasm)) {
+        if (!name.startsWith('_')) {
+            continue;
         }
-    });
+
+        injectRecorderHooks(recorder, wasm, name);
+    }
+
+    await injectWonderlandEngineLateHook();
 }
 
-export async function injectWonderlandEngineReplayer(replayer: WLETraceReplayer) {
-    await injectGenericWonderlandEngine((engine: WonderlandEngine) => {
-        replayer.setEngine(engine);
-        const wasm = engine.wasm;
+export function immediatelyInjectWonderlandEngineReplayer(replayer: WLETraceReplayer): void {
+    const wasm = replayer.wasm;
 
-        for (const name of Object.getOwnPropertyNames(wasm)) {
-            if (!name.startsWith('_wljs_')) {
-                continue;
-            }
-
-            const descriptor = getPropertyDescriptor(wasm, name);
-            if (descriptor.value && (typeof descriptor.value) === 'function') {
-                injectMethod(wasm, name, {
-                    replaceHook: function (this: WASM, ...args: any[]) {
-                        return replayer.markCallbackAsReplayed(name, args);
-                    },
-                });
-            }
+    for (const name of Object.getOwnPropertyNames(wasm)) {
+        if (!name.startsWith('_wljs_')) {
+            continue;
         }
-    });
+
+        const descriptor = getPropertyDescriptor(wasm, name);
+        if (descriptor.value && (typeof descriptor.value) === 'function') {
+            injectMethod(wasm, name, {
+                replaceHook: function (this: WASM, ...args: any[]) {
+                    return replayer.markCallbackAsReplayed(name, args);
+                },
+            });
+        }
+    }
 }
 
 export async function injectWonderlandEngine(controller: WLETraceController): Promise<void> {
@@ -74,7 +71,8 @@ export async function injectWonderlandEngine(controller: WLETraceController): Pr
     controller.registerFeature('trace:emitter:WonderlandEngine.onSceneLoaded');
     controller.registerFeature('debug:dummy-material-ctor-crash');
 
-    const engine = await injectGenericWonderlandEngine((engine: WonderlandEngine) => {
+    const engine = await injectWonderlandEngineLateHook((engine: WonderlandEngine) => {
+        console.debug('[wle-trace CONTROLLER] Engine loaded, all hooks injected');
         const wasm = engine.wasm;
 
         engine.onSceneLoaded.add(() => {

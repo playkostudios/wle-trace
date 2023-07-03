@@ -1,4 +1,4 @@
-import { type WonderlandEngine } from '@wonderlandengine/api';
+import { type WASM } from '@wonderlandengine/api';
 import { ValueType, type AnyType, type ArgType, type MethodTypeMap, SpecialRetType, VALUE_TYPE_MAX, SPECIAL_TYPE_MIN } from './common.js';
 import { ReplayBuffer } from './ReplayBuffer.js';
 
@@ -13,7 +13,7 @@ export class ReplayBufferV1 implements ReplayBuffer {
         return this.offset >= this.buffer.byteLength;
     }
 
-    constructor(private engine: WonderlandEngine, private buffer: ArrayBuffer, private headerSize: number) {
+    constructor(private wasm: WASM, private buffer: ArrayBuffer, private headerSize: number) {
         this.bufferView = new DataView(buffer, headerSize);
 
         // parse dictionary
@@ -143,7 +143,7 @@ export class ReplayBufferV1 implements ReplayBuffer {
 
                 // do call
                 console.debug('replay call', methodName, expectedRetVal, ...args);
-                const retVal = (this.engine.wasm as unknown as Record<string, (...args: any[]) => any>)[methodName](...args);
+                const retVal = (this.wasm as unknown as Record<string, (...args: any[]) => any>)[methodName](...args);
 
                 // verify return value
                 if (hasRetValue && retVal !== expectedRetVal) {
@@ -156,8 +156,8 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 this.offset += 4;
                 const byteLength = this.bufferView.getUint32(this.offset);
                 this.offset += 4;
-                console.debug('replay dma', byteLength, 'bytes @', byteOffset, ';end=', byteOffset + byteLength, '; heap8 end=', this.engine.wasm.HEAPU8.byteLength);
-                this.engine.wasm.HEAPU8.set(new Uint8Array(this.buffer, this.offset + this.headerSize, byteLength), byteOffset);
+                console.debug('replay dma', byteLength, 'bytes @', byteOffset, ';end=', byteOffset + byteLength, '; heap8 end=', this.wasm.HEAPU8.byteLength);
+                this.wasm.HEAPU8.set(new Uint8Array(this.buffer, this.offset + this.headerSize, byteLength), byteOffset);
                 this.offset += byteLength;
             } else {
                 debugger;
