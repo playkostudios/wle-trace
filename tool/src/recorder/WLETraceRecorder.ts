@@ -560,6 +560,22 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
         }
     }
 
+    isHeapBuffer(buffer: ArrayBuffer): boolean {
+        const wasm = this._wasm;
+        if (!wasm) {
+            return false;
+        }
+
+        return buffer === wasm.HEAP8?.buffer ||
+               buffer === wasm.HEAP16?.buffer ||
+               buffer === wasm.HEAP32?.buffer ||
+               buffer === wasm.HEAPU8?.buffer ||
+               buffer === wasm.HEAPU16?.buffer ||
+               buffer === wasm.HEAPU32?.buffer ||
+               buffer === wasm.HEAPF32?.buffer ||
+               buffer === wasm.HEAPF64?.buffer;
+    }
+
     recordWASMDMA(dst: TypedArray, src: ArrayLike<number>, offset: number) {
         if (!this.recordBuffer || this._wasm === null) {
             return;
@@ -580,16 +596,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
         }
 
         // verify that the destination is the heap
-        if (
-            dstBuf !== this._wasm.HEAP8?.buffer &&
-            dstBuf !== this._wasm.HEAP16?.buffer &&
-            dstBuf !== this._wasm.HEAP32?.buffer &&
-            dstBuf !== this._wasm.HEAPU8?.buffer &&
-            dstBuf !== this._wasm.HEAPU16?.buffer &&
-            dstBuf !== this._wasm.HEAPU32?.buffer &&
-            dstBuf !== this._wasm.HEAPF32?.buffer &&
-            dstBuf !== this._wasm.HEAPF64?.buffer
-        ) {
+        if (!this.isHeapBuffer(dstBuf)) {
             return;
         }
 
@@ -629,6 +636,10 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
             this.discard();
             throw err;
         }
+    }
+
+    recordWASMSingleDMA(dst: TypedArray, offset: number, value: number) {
+        // TODO
     }
 
     enterHook() {
