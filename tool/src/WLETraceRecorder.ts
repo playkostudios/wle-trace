@@ -3,8 +3,81 @@ import { type MethodTypeMap, ValueType, MAGIC, CallTypeJSON, ValueTypeJSON, Meth
 import { WLETraceSentinelBase } from './WLETraceSentinelBase.js';
 import { type WLETraceEarlyInjector } from './WLETraceEarlyInjector.js';
 import { lateInjectWonderlandEngineRecorder } from './hooks/WonderlandEngine.js';
+import { AllocationMap } from './AllocationMap.js';
 
 export const REPLAY_FORMAT_VERSION = 1;
+
+// recorder event types:
+//  event ID | encoding    | description
+// ----------+-------------+-----------------------------------
+//         0 | call        | callback
+//         1 | call        | call
+//         2 | no-ret-call | callback (threw, no return value)
+//         3 | no-ret-call | call (threw, no return value)
+//         4 | multi-dma   | multi-byte DMA
+//         5 | idx-dma-u8  | single-value DMA (u8)
+//         6 | idx-dma-u16 | single-value DMA (u16)
+//         7 | idx-dma-u32 | single-value DMA (u32)
+//         8 | idx-dma-i8  | single-value DMA (i8)
+//         9 | idx-dma-i16 | single-value DMA (i16)
+//        10 | idx-dma-i32 | single-value DMA (i32)
+//        11 | idx-dma-f32 | single-value DMA (f32)
+//        12 | idx-dma-f64 | single-value DMA (f64)
+//  13 - 255 | unused      | unused
+
+// encodings:
+//  encoding type        | byte count or [encoding] | description
+// ----------------------+--------------------------+---------------------
+//  value (basic TYPE)   | sizeof(TYPE)             | TYPE value
+// ----------------------+--------------------------+---------------------
+//  value (bool)         | 1                        | u8 bool value (0/1)
+// ----------------------+--------------------------+---------------------
+//  value (str)          | 4                        | u32 string index
+// ----------------------+--------------------------+---------------------
+//  value (ptr)          | [pointer]                | memory location
+// ----------------------+--------------------------+---------------------
+//  value (null_ptr)     | [pointer]                | memory location
+// ----------------------+--------------------------+---------------------
+//  value (attr_off)     | TODO                     | TODO
+// ----------------------+--------------------------+---------------------
+//  value (attr_ptr)     | TODO                     | TODO
+// ----------------------+--------------------------+---------------------
+//  value (ptr_free)     | [alloc-id]               | alloc ID to free
+// ----------------------+--------------------------+---------------------
+//  value (ptr_new)      | 1                        | u8, 1 if good alloc
+// ----------------------+--------------------------+---------------------
+//  value (ptr_new_size) | 4                        | allocation size
+// ----------------------+--------------------------+---------------------
+//  value (ptr_new_end)  | 0                        | nothing
+// ----------------------+--------------------------+---------------------
+//  value (ptr_temp)     | 0                        | nothing
+// ----------------------+--------------------------+---------------------
+//  value (void)         | 0                        | nothing
+// ----------------------+--------------------------+---------------------
+//  value (ptr_pre_*)    | 0                        | nothing
+// ----------------------+--------------------------+---------------------
+//  pointer (null)       | 4                        | zeroed 4 bytes
+// ----------------------+--------------------------+---------------------
+//  pointer (non-null)   | [alloc-ref]              | memory location
+// ----------------------+--------------------------+---------------------
+//  alloc-id             | 4                        | u32 alloc ID + 1
+// ----------------------+--------------------------+---------------------
+//  alloc-ref            | [alloc-id]               | alloc ID
+//                       | 4                        | u32 relative offset
+// ----------------------+--------------------------+---------------------
+//  call                 | 4                        | u32 method index
+//                       | [value]?                 | return value
+//                       | [value]*                 | argument values
+// ----------------------+--------------------------+---------------------
+//  no-ret-call          | 4                        | u32 method index
+//                       | [value]*                 | argument values
+// ----------------------+--------------------------+---------------------
+//  multi-dma            | [alloc-ref]              | destination
+//                       | len                      | buffer
+// ----------------------+--------------------------+---------------------
+//  idx-dma-(basic TYPE) | [alloc-ref]              | destination
+//                       | [value (basic TYPE)]     | value
+
 
 export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEarlyInjector {
     private recordBuffer: null | ArrayBuffer[] = [];
@@ -13,7 +86,8 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
     private callTypeMap: MethodTypeMap = new Map<number, ValueType[]>();
     private callbackTypeMap: MethodTypeMap = new Map<number, ValueType[]>();
     private _ready: Array<[() => void, (err: unknown) => void]> | boolean = [];
-    private memRanges = new Array<number>();
+    private allocMap = new AllocationMap();
+    private hookDepth = 0;
 
     stopAndDownloadOnSentinel = false;
 
@@ -83,6 +157,22 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
         return this._wasm !== null && this.recordBuffer !== null;
     }
 
+    get inHook(): boolean {
+        return this.hookDepth > 0;
+    }
+
+    discard(): void {
+        if (!this.recording) {
+            return;
+        }
+
+        this.recordBuffer = null;
+        this.stringDictionary.length = 0;
+        this.callTypeMap.clear();
+        this.callbackTypeMap.clear();
+        this.allocMap.clear();
+    }
+
     stop(): Blob {
         if (!this.recording) {
             throw new Error("Can't stop recording; not recording");
@@ -90,8 +180,6 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
 
         console.debug('[wle-trace RECORDER] Stopped recording');
         const recordBuffer = this.recordBuffer!;
-        this.recordBuffer = null;
-
         const chunks: ArrayBuffer[] = [];
 
         // encode magic
@@ -118,15 +206,14 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
             chunks.push(strBuf);
         }
 
-        this.stringDictionary.length = 0;
-
         // encode call type map
         this.encodeMethodTypeMap(chunks, this.callTypeMap);
-        this.callTypeMap.clear();
 
         // encode callback type map
         this.encodeMethodTypeMap(chunks, this.callbackTypeMap);
-        this.callbackTypeMap.clear();
+
+        // cleanup
+        this.discard();
 
         // tie everything up
         for (const chunk of recordBuffer) {
@@ -155,15 +242,17 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
         return idx;
     }
 
-    private recordValue(val: unknown, expectedType: ValueType) {
+    private recordValue(val: unknown, expectedType: ValueType): boolean {
         let enc: ArrayBuffer;
         const valType = typeof val;
+        let handleMemChanges = false;
+
         if (expectedType === ValueType.Void) {
             if (val !== undefined) {
                 // console.warn(`[wle-trace RECORDER] ignoring value; void expected, but got a non-undefined value`);
             }
 
-            return;
+            return false;
         } else if (expectedType === ValueType.Uint32 || expectedType === ValueType.Int32 || expectedType === ValueType.Float32 || expectedType === ValueType.Float64 || expectedType === ValueType.PointerAllocSize) {
             if (valType !== 'number') {
                 if (val === undefined || val === null) {
@@ -218,16 +307,14 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
             }
 
             if (val === 0) {
-                // null pointer, encode in short format (4-byte, all zeros)
+                // null pointer, encode in short format
                 enc = new ArrayBuffer(4);
             } else {
-                // non-null pointer, encode in long format:
-                // 4 bytes: memory range index + 1
-                // 4 bytes: relative offset
-                const [rangeIdx, relOffset] = this.getMemRangeFromPtr(val as number);
+                // non-null pointer, encode in long format
+                const [allocID, relOffset] = this.allocMap.getID(val as number);
                 enc = new ArrayBuffer(8);
                 const encView = new DataView(enc);
-                encView.setUint32(0, rangeIdx + 1);
+                encView.setUint32(0, allocID + 1);
                 encView.setUint32(4, relOffset);
             }
         } else if (expectedType === ValueType.PointerFree) {
@@ -241,18 +328,14 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
             }
 
             enc = new ArrayBuffer(4);
-            let rangeIdx = 0;
+            let allocID = 0;
 
             if (val !== 0) {
-                const [rangeIdxRaw, relOffset] = this.getMemRangeFromPtr(val as number);
-                if (relOffset !== 0) {
-                    throw new Error('Invalid pointer free; pointer is not at the beginning of a memory range');
-                }
-
-                rangeIdx = rangeIdxRaw + 1;
+                allocID = this.allocMap.getIDFromStart(val as number) + 1;
             }
 
-            new DataView(enc).setUint32(0, rangeIdx);
+            new DataView(enc).setUint32(0, allocID);
+            handleMemChanges = true;
         } else if (expectedType === ValueType.PointerAlloc || expectedType === ValueType.PointerAllocEnd) {
             if (valType !== 'number') {
                 if (val === undefined || val === null) {
@@ -266,35 +349,21 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
             // this is a pointer allocation, therefore it doesn't make sense to
             // store the memory range or pointer address. we just need to store
             // whether the allocation was valid with a boolean
+            handleMemChanges = val !== 0;
             enc = new ArrayBuffer(1);
-            new DataView(enc).setUint8(0, val !== 0 ? 1 : 0);
+            new DataView(enc).setUint8(0, handleMemChanges ? 1 : 0);
         } else if (expectedType === ValueType.PointerTemp || expectedType >= ValueType.PointerPreStart) {
             // XXX value can be safely ignored; this is a temporary pointer,
             //     which will not be mapped to anything later on, or a
             //     pre-allocated pointer, which doesn't need to be stored
-            return;
+            return expectedType !== ValueType.PointerTemp;
         } else {
             expectedType; // TODO attribute offsets (are they pointers, etc...?)
             throw new Error('Invalid expected type');
         }
 
         this.recordBuffer!.push(enc);
-    }
-
-    private getMemRangeFromPtr(ptr: number): [rangeIdx: number, relOffset: number] {
-        const memRanges = this.memRanges;
-        const iMax = memRanges.length;
-
-        for (let i = 0; i < iMax; i += 2) {
-            const start = memRanges[i];
-            const end = memRanges[i + 1];
-
-            if (ptr >= start && ptr < end) {
-                return [i / 2, ptr - start];
-            }
-        }
-
-        throw new Error('Could not find memory range');
+        return handleMemChanges;
     }
 
     recordWASMGeneric(isCall: boolean, methodName: string, args: any[], threw: boolean, retVal?: any) {
@@ -304,209 +373,185 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
 
         // console.debug(`[wle-trace RECORDER] record call${isCall ? '' : 'back'}`, methodName, args, threw, retVal);
 
-        // get index of method name
-        const methodIdx = this.getStringIdx(methodName);
+        try {
+            // get index of method name
+            const methodIdx = this.getStringIdx(methodName);
 
-        // prepare header of method call(back). format:
-        // bytes; desc
-        // -----------
-        // 1    ; eventType (0 if callback, 1 if call, 2 if throwing callback, 3 if throwing call, 4 if dma (not used here))
-        // 4    ; methodIdx
-        const headerBuffer = new ArrayBuffer(5);
-        const headerBufferView = new DataView(headerBuffer);
-        headerBufferView.setUint8(0, (isCall ? 1 : 0) | (threw ? 2 : 0));
-        headerBufferView.setUint32(1, methodIdx);
+            // prepare header of method call(back)
+            const headerBuffer = new ArrayBuffer(5);
+            const headerBufferView = new DataView(headerBuffer);
+            headerBufferView.setUint8(0, (isCall ? 1 : 0) | (threw ? 2 : 0));
+            headerBufferView.setUint32(1, methodIdx);
 
-        this.recordBuffer.push(headerBuffer);
+            this.recordBuffer.push(headerBuffer);
 
-        // get arg type map
-        const methodTypeMap = isCall ? this.callTypeMap : this.callbackTypeMap;
-        let thisMethodTypeMap = methodTypeMap.get(methodIdx);
-        if (thisMethodTypeMap) {
-            if (!threw) {
-                const retType = thisMethodTypeMap[0];
-                if (retType !== ValueType.Void) {
-                    // double-check that ret type is compatible and encode
-                    this.recordValue(retVal, retType);
+            // get arg type map
+            const methodTypeMap = isCall ? this.callTypeMap : this.callbackTypeMap;
+            let thisMethodTypeMap = methodTypeMap.get(methodIdx);
+            let handleMemChanges = false;
+            if (thisMethodTypeMap) {
+                if (!threw) {
+                    const retType = thisMethodTypeMap[0];
+                    if (retType !== ValueType.Void) {
+                        // double-check that ret type is compatible and encode
+                        handleMemChanges ||= this.recordValue(retVal, retType);
+                    }
                 }
-            }
 
-            // double-check that arg types are compatible and encode
-            // XXX first index is reserved for return types
-            const argCount = args.length;
-            for (let i = 0; i < argCount; i++) {
-                this.recordValue(args[i], thisMethodTypeMap[i + 1]);
-            }
-        } else {
-            console.warn(`[wle-trace RECORDER] "${methodName}" is not a registered call${isCall ? '' : 'back'}. Guessing argument types${isCall ? '' : ' and return type'} from values`);
-            // TODO improve this system so that not all numbers are floats,
-            //      etc... use of space grows too big too fast with the current
-            //      system when using guessed registration. it would be nice if
-            //      wle-trace could guess the types of each method arg list
-            //      BEFORE recording, by building the method type map JSON by
-            //      "training" via listening to calls without recording
-
-            // make type map for this method and encode
-            thisMethodTypeMap = [];
-
-            if (threw) {
-                // FIXME this will make it so that this function never has a
-                //       return type even if it returns a value in later calls,
-                //       because the first call threw an error. maybe have a
-                //       "generic callback" event type, which has the type map
-                //       as part of the event?
-                console.warn(`[wle-trace RECORDER] first call${isCall ? '' : 'back'} for method "${methodName}" threw; assuming void return type`);
-                thisMethodTypeMap.push(ValueType.Void);
+                // double-check that arg types are compatible and encode
+                // XXX first index is reserved for return types
+                const argCount = args.length;
+                for (let i = 0; i < argCount; i++) {
+                    handleMemChanges ||= this.recordValue(args[i], thisMethodTypeMap[i + 1]);
+                }
             } else {
-                const retType = typeof retVal;
-                let enc = null;
-                if (retType === 'undefined') {
+                console.warn(`[wle-trace RECORDER] "${methodName}" is not a registered call${isCall ? '' : 'back'}. Guessing argument types${isCall ? '' : ' and return type'} from values`);
+                // TODO improve this system so that not all numbers are floats,
+                //      etc... use of space grows too big too fast with the
+                //      current system when using guessed registration. it would
+                //      be nice if wle-trace could guess the types of each
+                //      method arg list BEFORE recording, by building the method
+                //      type map JSON by "training" via listening to calls
+                //      without recording
+                //      - this is probably impossible because of malloc + free
+
+                // make type map for this method and encode
+                thisMethodTypeMap = [];
+
+                if (threw) {
+                    // FIXME this will make it so that this function never has a
+                    //       return type even if it returns a value in later
+                    //       calls, because the first call threw an error. maybe
+                    //       have a "generic callback" event type, which has the
+                    //       type map as part of the event?
+                    console.warn(`[wle-trace RECORDER] first call${isCall ? '' : 'back'} for method "${methodName}" threw; assuming void return type`);
                     thisMethodTypeMap.push(ValueType.Void);
-                } else if (retType === 'number') {
-                    thisMethodTypeMap.push(ValueType.Float64);
-                    enc = new ArrayBuffer(8);
-                    new DataView(enc).setFloat64(0, retVal);
-                } else if (retType === 'boolean') {
-                    thisMethodTypeMap.push(ValueType.Boolean);
-                    enc = new ArrayBuffer(1);
-                    new DataView(enc).setUint8(0, retVal);
-                } else if (retType === 'string') {
-                    thisMethodTypeMap.push(ValueType.String);
-                    enc = new ArrayBuffer(4);
-                    new DataView(enc).setUint32(0, this.getStringIdx(retVal));
                 } else {
-                    debugger;
-                    throw new Error(`Unexpected return type in WASM call${isCall ? '' : 'back'}`);
+                    const retType = typeof retVal;
+                    let enc = null;
+                    if (retType === 'undefined') {
+                        thisMethodTypeMap.push(ValueType.Void);
+                    } else if (retType === 'number') {
+                        thisMethodTypeMap.push(ValueType.Float64);
+                        enc = new ArrayBuffer(8);
+                        new DataView(enc).setFloat64(0, retVal);
+                    } else if (retType === 'boolean') {
+                        thisMethodTypeMap.push(ValueType.Boolean);
+                        enc = new ArrayBuffer(1);
+                        new DataView(enc).setUint8(0, retVal);
+                    } else if (retType === 'string') {
+                        thisMethodTypeMap.push(ValueType.String);
+                        enc = new ArrayBuffer(4);
+                        new DataView(enc).setUint32(0, this.getStringIdx(retVal));
+                    } else {
+                        debugger;
+                        throw new Error(`Unexpected return type in WASM call${isCall ? '' : 'back'}`);
+                    }
+
+                    if (enc !== null) {
+                        this.recordBuffer.push(enc);
+                    }
                 }
 
-                if (enc !== null) {
+                for (const arg of args) {
+                    const argType = typeof arg;
+                    let enc;
+                    if (argType === 'number') {
+                        thisMethodTypeMap.push(ValueType.Float64);
+                        enc = new ArrayBuffer(8);
+                        new DataView(enc).setFloat64(0, arg);
+                    } else if (argType === 'boolean') {
+                        thisMethodTypeMap.push(ValueType.Boolean);
+                        enc = new ArrayBuffer(1);
+                        new DataView(enc).setUint8(0, arg);
+                    } else if (argType === 'string') {
+                        thisMethodTypeMap.push(ValueType.String);
+                        enc = new ArrayBuffer(4);
+                        new DataView(enc).setUint32(0, this.getStringIdx(arg));
+                    } else {
+                        debugger;
+                        throw new Error(`Unexpected argument type in WASM call${isCall ? '' : 'back'}`);
+                    }
+
                     this.recordBuffer.push(enc);
                 }
+
+                methodTypeMap.set(methodIdx, thisMethodTypeMap);
             }
 
-            for (const arg of args) {
-                const argType = typeof arg;
-                let enc;
-                if (argType === 'number') {
-                    thisMethodTypeMap.push(ValueType.Float64);
-                    enc = new ArrayBuffer(8);
-                    new DataView(enc).setFloat64(0, arg);
-                } else if (argType === 'boolean') {
-                    thisMethodTypeMap.push(ValueType.Boolean);
-                    enc = new ArrayBuffer(1);
-                    new DataView(enc).setUint8(0, arg);
-                } else if (argType === 'string') {
-                    thisMethodTypeMap.push(ValueType.String);
-                    enc = new ArrayBuffer(4);
-                    new DataView(enc).setUint32(0, this.getStringIdx(arg));
-                } else {
-                    debugger;
-                    throw new Error(`Unexpected argument type in WASM call${isCall ? '' : 'back'}`);
-                }
+            // handle (de)allocations
+            if (handleMemChanges) {
+                const allocMap = new Array<[start: number | null, end: number | null]>();
+                const retArgs = [retVal, ...args];
+                const iMax = thisMethodTypeMap.length;
 
-                this.recordBuffer.push(enc);
-            }
+                for (let i = 0; i < iMax; i++) {
+                    const argType = thisMethodTypeMap[i];
+                    const val = retArgs[i];
 
-            methodTypeMap.set(methodIdx, thisMethodTypeMap);
-        }
+                    if (argType === ValueType.PointerAlloc) {
+                        let foundPair = false;
+                        for (const allocPair of allocMap) {
+                            if (allocPair[0] === null) {
+                                foundPair = true;
+                                allocPair[0] = val;
 
-        // handle allocations
-        const allocMap = new Array<[start: number | null, end: number | null]>();
-        const retArgs = [retVal, ...args];
-        const iMax = thisMethodTypeMap.length;
-
-        for (let i = 0; i < iMax; i++) {
-            const argType = thisMethodTypeMap[i];
-            const val = retArgs[i];
-
-            if (argType === ValueType.PointerAlloc) {
-                let foundPair = false;
-                for (const allocPair of allocMap) {
-                    if (allocPair[0] === null) {
-                        foundPair = true;
-                        allocPair[0] = val;
-
-                        if ((allocPair[1] as number) < 0) {
-                            allocPair[1] = val - (allocPair[1] as number);
+                                if ((allocPair[1] as number) < 0) {
+                                    allocPair[1] = val - (allocPair[1] as number);
+                                }
+                                break;
+                            }
                         }
-                        break;
+
+                        if (!foundPair) {
+                            allocMap.push([val, null]);
+                        }
+                    } else if (argType === ValueType.PointerAllocEnd) {
+                        let foundPair = false;
+                        for (const allocPair of allocMap) {
+                            if (allocPair[1] === null) {
+                                foundPair = true;
+                                allocPair[1] = val;
+                                break;
+                            }
+                        }
+
+                        if (!foundPair) {
+                            allocMap.push([null, val]);
+                        }
+                    } else if (argType === ValueType.PointerAllocSize) {
+                        let foundPair = false;
+                        for (const allocPair of allocMap) {
+                            if (allocPair[1] === null) {
+                                foundPair = true;
+                                allocPair[1] = allocPair[0] + val;
+                                break;
+                            }
+                        }
+
+                        if (!foundPair) {
+                            allocMap.push([null, -val]);
+                        }
+                    } else if (argType >= ValueType.PointerPreStart) {
+                        const bytes = argType - ValueType.PointerPreStart + 1;
+                        allocMap.push([ val, val + bytes ]);
+                    } else if (argType === ValueType.PointerFree) {
+                        this.allocMap.deallocateFromStart(val);
                     }
                 }
 
-                if (!foundPair) {
-                    allocMap.push([val, null]);
-                }
-            } else if (argType === ValueType.PointerAllocEnd) {
-                let foundPair = false;
-                for (const allocPair of allocMap) {
-                    if (allocPair[1] === null) {
-                        foundPair = true;
-                        allocPair[1] = val;
-                        break;
+                for (const [start, end] of allocMap) {
+                    if (start === null || end === null) {
+                        throw new Error('Invalid allocation map in call/callback');
                     }
-                }
 
-                if (!foundPair) {
-                    allocMap.push([null, val]);
+                    this.allocMap.allocate(start, end);
                 }
-            } else if (argType === ValueType.PointerAllocSize) {
-                let foundPair = false;
-                for (const allocPair of allocMap) {
-                    if (allocPair[1] === null) {
-                        foundPair = true;
-                        allocPair[1] = allocPair[0] + val;
-                        break;
-                    }
-                }
-
-                if (!foundPair) {
-                    allocMap.push([null, -val]);
-                }
-            } else if (argType >= ValueType.PointerPreStart) {
-                const bytes = argType - ValueType.PointerPreStart + 1;
-                allocMap.push([ val, val + bytes ]);
-            } else if (argType === ValueType.PointerFree) {
-                const [rangeIdx, relOffset] = this.getMemRangeFromPtr(val);
-
-                if (relOffset !== 0) {
-                    throw new Error('Invalid free');
-                }
-
-                const rangeIdx2 = rangeIdx * 2;
-                console.debug('---', this.memRanges[rangeIdx2], this.memRanges[rangeIdx2 + 1])
-                this.memRanges[rangeIdx2] = 0;
-                this.memRanges[rangeIdx2 + 1] = 0;
             }
-        }
-
-        for (const [start, end] of allocMap) {
-            if (start === null || end === null) {
-                throw new Error('Invalid allocation map in call/callback');
-            }
-
-            // free intersecting ranges
-            const iMax = this.memRanges.length;
-            let ignore = false;
-            for (let i = 0; i < iMax; i += 2) {
-                const oStart = this.memRanges[i];
-                const oEnd = this.memRanges[i + 1];
-
-                if (start === oStart && end === oEnd) {
-                    // XXX reuse mem range
-                    ignore = true;
-                    break;
-                }
-
-                // TODO replace intersecting ranges, or handle in some other way
-            }
-
-            if (ignore) {
-                continue;
-            }
-
-            // TODO handle replaced ranges
-            console.debug('+++', start, end)
-            this.memRanges.push(start, end);
+        } catch (err) {
+            console.error(`[wle-trace RECORDER] Exception occurred while recording WASM call${isCall ? '' : 'back'}, recording will be discarded`);
+            this.discard();
+            throw err;
         }
     }
 
@@ -515,45 +560,75 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
             return;
         }
 
-        // TODO handle memory ranges
-        // verify that destination is the heap
-        const dstBuf = dst.buffer;
-        offset += dst.byteOffset;
-
-        if ((dst.byteLength - offset) <= 0 || src.length === 0 || dstBuf !== this._wasm.HEAP8?.buffer) {
+        // ignore DMA from loading screen. not only is this a waste of space,
+        // there is also no way to track the allocation of the loading screen,
+        // which makes it impossible to properly replay the DMA
+        if (ArrayBuffer.isView(src) && src.buffer === this._wasm._loadingScreen) {
             return;
         }
 
-        // prepare buffer copy
-        let srcCopy: TypedArray;
-        if (ArrayBuffer.isView(src)) {
-            // typed array src
-            const srcTA = src as TypedArray;
-            srcCopy = srcTA.slice();
-        } else {
-            // array src
-            srcCopy = new (dst.constructor as TypedArrayCtor)(src);
+        if (!this.inHook) {
+            console.warn('ignored dma', dst, src, offset)
+            return;
         }
 
-        const srcCopyCast = new Uint8Array(srcCopy.buffer, 0, srcCopy.byteLength);
+        try {
+            // verify that destination is the heap
+            const dstBuf = dst.buffer;
+            offset += dst.byteOffset;
 
-        // prepare header of dma set. format:
-        // bytes; desc
-        // -----------
-        // 1    ; eventType (0 if callback (not used here), 1 if call (not used here), 2 if throwing callback (not used here), 3 if throwing call (not used here), 4 if dma)
-        // 4    ; offset
-        // 4    ; buffer length
-        // console.debug('[wle-trace RECORDER] record dma', out.byteLength, '@', offset);
-        const headerBuffer = new ArrayBuffer(9);
-        const headerBufferView = new DataView(headerBuffer);
-        headerBufferView.setUint8(0, 4);
-        headerBufferView.setUint32(1, offset);
-        headerBufferView.setUint32(5, srcCopyCast.byteLength);
+            if ((dst.byteLength - offset) <= 0 || src.length === 0 || dstBuf !== this._wasm.HEAP8?.buffer) {
+                return;
+            }
 
-        this.recordBuffer.push(headerBuffer);
+            // prepare buffer copy
+            let srcCopy: TypedArray;
+            if (ArrayBuffer.isView(src)) {
+                // typed array src
+                const srcTA = src as TypedArray;
+                srcCopy = srcTA.slice();
+            } else {
+                // array src
+                srcCopy = new (dst.constructor as TypedArrayCtor)(src);
+            }
 
-        // add buffer to replay buffer
-        this.recordBuffer.push(srcCopyCast);
+            const srcCopyCast = new Uint8Array(srcCopy.buffer, 0, srcCopy.byteLength);
+
+            // get mapped memory location
+            const dmaLen = srcCopyCast.byteLength;
+            const [allocID, relOffset] = this.allocMap.getIDFromRange(offset, offset + dmaLen);
+
+            // prepare header of dma set
+            console.debug('[wle-trace RECORDER] record dma', dmaLen, '@', offset);
+            const headerBuffer = new ArrayBuffer(13);
+            const headerBufferView = new DataView(headerBuffer);
+            headerBufferView.setUint8(0, 4);
+            headerBufferView.setUint32(1, allocID);
+            headerBufferView.setUint32(5, relOffset);
+            headerBufferView.setUint32(9, dmaLen);
+
+            this.recordBuffer.push(headerBuffer);
+
+            // add buffer to replay buffer
+            this.recordBuffer.push(srcCopyCast);
+        } catch (err) {
+            console.error('[wle-trace RECORDER] Exception occurred while recording DMA, recording will be discarded');
+            this.discard();
+            throw err;
+        }
+    }
+
+    enterHook() {
+        this.hookDepth++;
+    }
+
+    leaveHook() {
+        if (this.hookDepth > 0) {
+            this.hookDepth--;
+        } else if (this.recording) {
+            this.discard();
+            throw new Error('[wle-trace RECORDER] Negative hook depth; an after/exception hook was not triggered, recording will be discarded');
+        }
     }
 
     private encodeMethodTypeMap(chunks: ArrayBuffer[], methodTypeMap: MethodTypeMap) {
