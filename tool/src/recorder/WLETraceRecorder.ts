@@ -565,27 +565,35 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
             return;
         }
 
-        // ignore DMA from loading screen. not only is this a waste of space,
-        // there is also no way to track the allocation of the loading screen,
-        // which makes it impossible to properly replay the DMA
-        if (ArrayBuffer.isView(src) && src.buffer === this._wasm._loadingScreen) {
+        // verify that we are in a hook
+        if (!this.inHook) {
             return;
         }
 
-        if (!this.inHook) {
-            console.warn('ignored dma', dst, src, offset)
+        // verify that the dma offset is in the bounds of the destination, and
+        // that the dma length is non-zero
+        const dstBuf = dst.buffer;
+        offset += dst.byteOffset;
+
+        if ((dstBuf.byteLength - offset) <= 0 || offset < 0 || src.length === 0) {
+            return;
+        }
+
+        // verify that the destination is the heap
+        if (
+            dstBuf !== this._wasm.HEAP8?.buffer &&
+            dstBuf !== this._wasm.HEAP16?.buffer &&
+            dstBuf !== this._wasm.HEAP32?.buffer &&
+            dstBuf !== this._wasm.HEAPU8?.buffer &&
+            dstBuf !== this._wasm.HEAPU16?.buffer &&
+            dstBuf !== this._wasm.HEAPU32?.buffer &&
+            dstBuf !== this._wasm.HEAPF32?.buffer &&
+            dstBuf !== this._wasm.HEAPF64?.buffer
+        ) {
             return;
         }
 
         try {
-            // verify that destination is the heap
-            const dstBuf = dst.buffer;
-            offset += dst.byteOffset;
-
-            if ((dst.byteLength - offset) <= 0 || src.length === 0 || dstBuf !== this._wasm.HEAP8?.buffer) {
-                return;
-            }
-
             // prepare buffer copy
             let srcCopy: TypedArray;
             if (ArrayBuffer.isView(src)) {
@@ -604,7 +612,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
             const [allocID, relOffset] = this.allocMap.getIDFromRange(offset, offset + dmaLen);
 
             // prepare header of dma set
-            console.debug('[wle-trace RECORDER] record dma', dmaLen, '@', offset);
+            // console.debug('[wle-trace RECORDER] record dma', dmaLen, '@', offset);
             const headerBuffer = new ArrayBuffer(13);
             const headerBufferView = new DataView(headerBuffer);
             headerBufferView.setUint8(0, 4);
