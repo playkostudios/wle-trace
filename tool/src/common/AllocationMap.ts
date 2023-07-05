@@ -40,6 +40,23 @@ export class AllocationMap {
         console.warn('[wle-trace ALLOC_MAP] deallocated due to overlapping memory range');
     }
 
+    allocateStride(start: number, stride: number, componentSize: number, count: number): number | null {
+        if (stride < componentSize) {
+            throw new Error('Allocation failed; invalid stride');
+        } else if (count === 0 || componentSize === 0) {
+            return null;
+        }
+
+        const startID = this.nextID;
+        const iMax = start + stride * count;
+
+        for (let i = start; i < iMax; i += stride) {
+            this.allocate(i, i + componentSize);
+        }
+
+        return startID;
+    }
+
     allocate(start: number, end: number): number | null {
         if (start === end) {
             // XXX this can naturally happen for pre-allocated empty strings

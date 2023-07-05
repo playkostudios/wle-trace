@@ -1,4 +1,4 @@
-import { type TypedArrayCtor, type TypedArray, type WASM } from '@wonderlandengine/api';
+import { type TypedArrayCtor, type TypedArray, type WASM, MeshIndexType } from '@wonderlandengine/api';
 import { WLETraceSentinelBase } from '../common/WLETraceSentinelBase.js';
 import { type WLETraceEarlyInjector } from '../common/WLETraceEarlyInjector.js';
 import { lateInjectWonderlandEngineRecorder } from './hooks/WonderlandEngine.js';
@@ -26,9 +26,11 @@ export const REPLAY_FORMAT_VERSION = 1;
 // ----------------------+--------------------------+---------------------
 //  value (null_ptr)     | [pointer]                | memory location
 // ----------------------+--------------------------+---------------------
-//  value (attr_off)     | TODO                     | TODO
+//  value (mattrs_ptr)   | 1                        | u8, 1 if good alloc
 // ----------------------+--------------------------+---------------------
-//  value (attr_ptr)     | TODO                     | TODO
+//  value (idatas_ptr)   | [pointer]                | memory location
+// ----------------------+--------------------------+---------------------
+//  value (idata_ptr)    | 1                        | u8, 1 if good alloc
 // ----------------------+--------------------------+---------------------
 //  value (ptr_free)     | [alloc-id]               | alloc ID to free
 // ----------------------+--------------------------+---------------------
@@ -76,6 +78,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
     private _ready: Array<[() => void, (err: unknown) => void]> | boolean = [];
     private allocMap = new AllocationMap();
     private hookDepth = 0;
+    private ignore = false;
 
     stopAndDownloadOnSentinel = false;
 
@@ -160,6 +163,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
         this.callTypeMap.clear();
         this.callbackTypeMap.clear();
         this.allocMap.clear();
+        this.ignore = false;
     }
 
     stop(): Blob {
@@ -258,7 +262,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
             }
 
             return false;
-        } else if (expectedType === ValueType.Uint32 || expectedType === ValueType.Int32 || expectedType === ValueType.Float32 || expectedType === ValueType.Float64 || expectedType === ValueType.PointerAllocSize) {
+        } else if (expectedType === ValueType.Uint32 || expectedType === ValueType.Int32 || expectedType === ValueType.Float32 || expectedType === ValueType.Float64 || expectedType === ValueType.PointerAllocSize || expectedType === ValueType.MeshAttributeMeshIndex) {
             if (valType !== 'number') {
                 if (val === undefined || val === null) {
                     val = 0;
@@ -271,7 +275,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
                 // console.warn(`[wle-trace RECORDER] casting value to number; number expected`);
             }
 
-            if (expectedType === ValueType.Uint32 || expectedType === ValueType.PointerAllocSize) {
+            if (expectedType === ValueType.Uint32 || expectedType === ValueType.PointerAllocSize || expectedType === ValueType.MeshAttributeMeshIndex) {
                 enc = new ArrayBuffer(4);
                 new DataView(enc).setUint32(0, val as number);
             } else if (expectedType === ValueType.Int32) {
@@ -299,11 +303,9 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
 
             enc = new ArrayBuffer(4);
             new DataView(enc).setUint32(0, this.getStringIdx(val as string));
-        } else if (expectedType === ValueType.Pointer || expectedType === ValueType.NullablePointer) {
+        } else if (expectedType === ValueType.Pointer || expectedType === ValueType.IndexDataStructPointer) {
             if (valType !== 'number') {
-                if (expectedType === ValueType.NullablePointer && val === null) {
-                    val = 0;
-                } else if (val === undefined || val === null) {
+                if (val === undefined || val === null) {
                     val = 0;
                     // console.warn(`[wle-trace RECORDER] casting value to null pointer; pointer expected`);
                 } else {
@@ -359,8 +361,28 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
             //     which will not be mapped to anything later on, or a
             //     pre-allocated pointer, which doesn't need to be stored
             return expectedType !== ValueType.PointerTemp;
+        } else if (expectedType === ValueType.MeshAttributeStructPointer) {
+            const struct = new Uint32Array(this._wasm!.HEAP8.buffer, val as number, 1);
+            enc = new ArrayBuffer(1);
+            const encView = new DataView(enc);
+
+            if (struct[0] === 255) {
+                encView.setUint8(0, 0);
+            } else {
+                encView.setUint8(0, 1);
+                handleMemChanges = true;
+            }
+        } else if (expectedType === ValueType.IndexDataPointer) {
+            enc = new ArrayBuffer(1);
+            const encView = new DataView(enc);
+
+            if (val === null) {
+                encView.setUint8(0, 0);
+            } else {
+                encView.setUint8(0, 1);
+                handleMemChanges = true;
+            }
         } else {
-            expectedType; // TODO attribute offsets (are they pointers, etc...?)
             throw new Error('Invalid expected type');
         }
 
@@ -369,13 +391,12 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
     }
 
     private handleError(err: unknown, action: string): void {
-        console.error(err);
-        console.error(`[wle-trace RECORDER] Exception occurred while ${action}, recording will be discarded`);
+        console.error(`[wle-trace RECORDER] Exception occurred while ${action}, recording will be discarded:`, err);
         this.discard();
     }
 
     recordWASMGeneric(isCall: boolean, methodName: string, args: any[], threw: boolean, retVal?: any) {
-        if (!this.recordBuffer || this._wasm === null) {
+        if (this.ignore || !this.recordBuffer || this._wasm === null) {
             return;
         }
 
@@ -490,6 +511,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
             // handle (de)allocations
             if (handleMemChanges) {
                 const allocMap = new Array<[start: number | null, end: number | null]>();
+                const iDataMap = new Array<[structPtr: number | null, dataPtr: number | null]>();
                 const retArgs = [retVal, ...args];
                 const iMax = thisMethodTypeMap.length;
 
@@ -545,6 +567,81 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
                         allocMap.push([ val, val + bytes ]);
                     } else if (argType === ValueType.PointerFree) {
                         this.allocMap.deallocateFromStart(val);
+                    } else if (argType === ValueType.IndexDataStructPointer) {
+                        let foundPair = false;
+                        for (const iDataPair of iDataMap) {
+                            if (iDataPair[0] === null) {
+                                foundPair = true;
+                                iDataPair[0] = val;
+                                break;
+                            }
+                        }
+
+                        if (!foundPair) {
+                            iDataMap.push([val, null]);
+                        }
+                    } else if (argType === ValueType.IndexDataPointer) {
+                        let foundPair = false;
+                        for (const iDataPair of iDataMap) {
+                            if (iDataPair[1] === null) {
+                                foundPair = true;
+                                iDataPair[1] = val ?? 0; // XXX can't be null!
+                                break;
+                            }
+                        }
+
+                        if (!foundPair) {
+                            iDataMap.push([null, val]);
+                        }
+                    } else if (argType === ValueType.MeshAttributeStructPointer) {
+                        const ptr32 = val / 4;
+                        const heap = this._wasm.HEAPU32;
+                        if (heap[ptr32] !== 255) {
+                            const offset = heap[ptr32 + 1];
+                            const stride = heap[ptr32 + 2];
+                            const componentCount = heap[ptr32 + 4];
+
+                            let meshIndex = null;
+
+                            for (let j = 0; j < iMax; j++) {
+                                if (thisMethodTypeMap[j] === ValueType.MeshAttributeMeshIndex) {
+                                    meshIndex = retArgs[j];
+                                    break;
+                                }
+                            }
+
+                            if (meshIndex === null) {
+                                throw new Error('Missing matching MeshAttributeMeshIndex value');
+                            }
+
+                            // FIXME ideally we wouldn't have to do an extra
+                            //       call. figure out if there is a way to do
+                            //       this without side-effects
+                            this.ignore = true;
+                            const vertexCount = this._wasm._wl_mesh_get_vertexCount(meshIndex);
+                            this.ignore = false;
+                            this.allocMap.allocateStride(offset, stride, componentCount, vertexCount);
+                        }
+                    }
+                }
+
+                for (const [struct, ptr] of iDataMap) {
+                    if (struct === null || ptr === null) {
+                        throw new Error('Invalid index data map in call/callback');
+                    }
+
+                    if (ptr !== 0) {
+                        const struct32 = struct / 4;
+                        const indexCount = this._wasm.HEAPU32[struct32];
+                        const indexSize = this._wasm.HEAPU32[struct32 + 1];
+
+                        if (indexSize === MeshIndexType.UnsignedByte) {
+                            this.allocMap.allocate(ptr, ptr + indexCount);
+                        } else if (indexSize === MeshIndexType.UnsignedShort) {
+                            this.allocMap.allocate(ptr, ptr + indexCount * 2);
+                        } else if (indexSize === MeshIndexType.UnsignedInt) {
+                            this.allocMap.allocate(ptr, ptr + indexCount * 4);
+                        }
                     }
                 }
 
@@ -578,7 +675,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
     }
 
     recordWASMDMA(dst: TypedArray, src: ArrayLike<number>, offset: number) {
-        if (!this.recordBuffer || this._wasm === null) {
+        if (this.ignore || !this.recordBuffer || this._wasm === null) {
             return;
         }
 
@@ -637,7 +734,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
     }
 
     recordWASMSingleDMA(dst: TypedArray, offset: number, value: number) {
-        if (!this.recordBuffer || this._wasm === null) {
+        if (this.ignore || !this.recordBuffer || this._wasm === null) {
             return;
         }
 
@@ -785,12 +882,14 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
                     argTypes.push(ValueType.String);
                 } else if (argDef === ValueTypeJSON.Pointer) {
                     argTypes.push(ValueType.Pointer);
-                } else if (argDef === ValueTypeJSON.NullablePointer) {
-                    argTypes.push(ValueType.NullablePointer);
-                } else if (argDef === ValueTypeJSON.AttributeOffset) {
-                    argTypes.push(ValueType.AttributeOffset);
-                } else if (argDef === ValueTypeJSON.AttributeStructPointer) {
-                    argTypes.push(ValueType.AttributeStructPointer);
+                } else if (argDef === ValueTypeJSON.MeshAttributeMeshIndex) {
+                    argTypes.push(ValueType.MeshAttributeMeshIndex);
+                } else if (argDef === ValueTypeJSON.MeshAttributeStructPointer) {
+                    argTypes.push(ValueType.MeshAttributeStructPointer);
+                } else if (argDef === ValueTypeJSON.IndexDataStructPointer) {
+                    argTypes.push(ValueType.IndexDataStructPointer);
+                } else if (argDef === ValueTypeJSON.IndexDataPointer) {
+                    argTypes.push(ValueType.IndexDataPointer);
                 } else if (argDef === ValueTypeJSON.PointerFree) {
                     argTypes.push(ValueType.PointerFree);
                 } else if (argDef === ValueTypeJSON.PointerAlloc) {
@@ -833,12 +932,14 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
                     retType = ValueType.String;
                 } else if (retDef === ValueTypeJSON.Pointer) {
                     retType = ValueType.Pointer;
-                } else if (retDef === ValueTypeJSON.NullablePointer) {
-                    retType = ValueType.NullablePointer;
-                } else if (retDef === ValueTypeJSON.AttributeOffset) {
-                    retType = ValueType.AttributeOffset;
-                } else if (retDef === ValueTypeJSON.AttributeStructPointer) {
-                    retType = ValueType.AttributeStructPointer;
+                } else if (retDef === ValueTypeJSON.MeshAttributeMeshIndex) {
+                    retType = ValueType.MeshAttributeMeshIndex;
+                } else if (retDef === ValueTypeJSON.MeshAttributeStructPointer) {
+                    retType = ValueType.MeshAttributeStructPointer;
+                } else if (retDef === ValueTypeJSON.IndexDataStructPointer) {
+                    retType = ValueType.IndexDataStructPointer;
+                } else if (retDef === ValueTypeJSON.IndexDataPointer) {
+                    retType = ValueType.IndexDataPointer;
                 } else if (retDef === ValueTypeJSON.PointerFree) {
                     retType = ValueType.PointerFree;
                 } else if (retDef === ValueTypeJSON.PointerAlloc) {

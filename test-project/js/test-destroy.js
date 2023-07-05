@@ -35,7 +35,7 @@ export class TestDestroy extends Component {
 
         this.modeTypes = {
             insert: {
-                modeIdx: 0,
+                modeIdx: 2,
                 modes: {
                     plain: () => {
                         console.debug('create 10 plain children');
@@ -54,15 +54,27 @@ export class TestDestroy extends Component {
                     },
                     createMesh: () => {
                         const newMesh = new Mesh(this.engine, {
-                            vertexCount: 3,
+                            vertexCount: 6,
                             indexType: null
                         });
                         this.meshesToNuke.push(newMesh);
 
                         const positions = newMesh.attribute(MeshAttribute.Position);
+                        const normals = newMesh.attribute(MeshAttribute.Normal);
+
                         positions.set(0, this.randomVector3());
                         positions.set(1, this.randomVector3());
                         positions.set(2, this.randomVector3());
+                        positions.set(3, this.randomVector3());
+                        positions.set(4, this.randomVector3());
+                        positions.set(5, this.randomVector3());
+
+                        normals.set(0, this.randomVector3());
+                        normals.set(1, this.randomVector3());
+                        normals.set(2, this.randomVector3());
+                        normals.set(3, this.randomVector3());
+                        normals.set(4, this.randomVector3());
+                        normals.set(5, this.randomVector3());
 
                         const child = this.engine.scene.addObject(this.object);
                         child.addComponent('mesh', { mesh: newMesh, material: this.badMaterial });
@@ -70,7 +82,7 @@ export class TestDestroy extends Component {
                 },
             },
             delete: {
-                modeIdx: 0,
+                modeIdx: 1,
                 modes: {
                     normal: () => {
                         console.debug('delete all children');
