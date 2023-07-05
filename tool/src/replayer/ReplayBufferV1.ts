@@ -3,6 +3,9 @@ import { ReplayBuffer } from './ReplayBuffer.js';
 import { type MethodTypeMap } from '../common/types/MethodTypeMap.js';
 import { ValueType } from '../common/types/ValueType.js';
 
+// TODO update to final v1 format. this is VERY outdated to the point where it
+//      doesn't load
+
 export class ReplayBufferV1 implements ReplayBuffer {
     private bufferView: DataView;
     private offset = 0;
@@ -174,6 +177,7 @@ export class ReplayBufferV1 implements ReplayBuffer {
 
         switch (type) {
             case ValueType.Uint32:
+            case ValueType.MeshAttributeMeshIndex:
                 val = this.bufferView.getUint32(this.offset);
                 this.offset += 4;
                 break;
@@ -189,15 +193,9 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 val = this.bufferView.getFloat64(this.offset);
                 this.offset += 8;
                 break;
-            case ValueType.Pointer:
-                val = this.bufferView.getUint32(this.offset);
-                this.offset += 4;
-
-                if (val === 0) {
-                    val = null;
-                }
-                break;
             case ValueType.Boolean:
+            case ValueType.MeshAttributeStructPointer:
+            case ValueType.IndexDataPointer:
                 val = this.bufferView.getUint8(this.offset) !== 0;
                 this.offset += 1;
                 break;
@@ -212,7 +210,26 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 this.offset += 4;
                 break;
             }
+            case ValueType.Pointer:
+            case ValueType.IndexDataStructPointer:
+                const allocID = this.bufferView.getUint32(this.offset);
+                this.offset += 4;
+
+                if (allocID === 0) {
+                    val = null;
+                } else {
+                    const relOffset = this.bufferView.getUint32(this.offset);
+                    this.offset += 4;
+                    val = [allocID - 1, relOffset];
+                }
+                break;
+            case ValueType.PointerFree:
+                // TODO is this +1?
+                val = this.bufferView.getUint32(this.offset);
+                this.offset += 4;
+                break;
             default:
+                // TODO other cases
                 throw new Error(`Unknown ValueType: ${type}`);
         }
 

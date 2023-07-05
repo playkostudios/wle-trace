@@ -24,8 +24,6 @@ export const REPLAY_FORMAT_VERSION = 1;
 // ----------------------+--------------------------+---------------------
 //  value (ptr)          | [pointer]                | memory location
 // ----------------------+--------------------------+---------------------
-//  value (null_ptr)     | [pointer]                | memory location
-// ----------------------+--------------------------+---------------------
 //  value (mattrs_ptr)   | 1                        | u8, 1 if good alloc
 // ----------------------+--------------------------+---------------------
 //  value (idatas_ptr)   | [pointer]                | memory location
