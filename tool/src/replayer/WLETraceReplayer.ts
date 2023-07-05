@@ -1,4 +1,4 @@
-import { LoadRuntimeOptions, WASM, WonderlandEngine } from '@wonderlandengine/api';
+import { WASM, WonderlandEngine } from '@wonderlandengine/api';
 import { type ReplayBuffer } from './ReplayBuffer.js';
 import { ReplayBufferV1 } from './ReplayBufferV1.js';
 import { type WLETraceEarlyInjector } from '../common/WLETraceEarlyInjector.js';
@@ -18,49 +18,17 @@ class DummyScene {
     load(_src: string) {}
 }
 
-function getUpload(extensions?: string): Promise<ArrayBuffer> {
-    return new Promise((resolve, _reject) => {
-        const fileIn = document.createElement('input');
-        fileIn.type = 'file';
-        fileIn.style.display = 'none';
-
-        if (extensions !== undefined) {
-            fileIn.accept = extensions;
-        }
-
-        document.body.appendChild(fileIn);
-        fileIn.addEventListener('change', async () => {
-            const file = fileIn.files?.[0];
-            if (file) {
-                resolve(await file.arrayBuffer());
-            }
-        });
-
-        fileIn.click();
-        document.body.removeChild(fileIn);
-    });
-}
-
-function makePopupButton(message: string): Promise<void> {
-    return new Promise((resolve, _reject) => {
-        const popup = document.createElement('button');
-        popup.textContent = message;
-        popup.onclick = () => {
-            resolve();
-            document.body.removeChild(popup);
-        };
-        document.body.appendChild(popup);
-    });
-}
+export type EndedCallback = (isError: boolean, err?: unknown) => void;
 
 export class WLETraceReplayer implements ReplayBuffer, WLETraceEarlyInjector {
     private _wasm: WASM | null = null;
     private replayBuffer: ReplayBuffer | null = null;
     private _ready: Array<[() => void, (err: unknown) => void]> | boolean = [];
+    private _endedCallbacks = new Array<EndedCallback>();
 
-    constructor(wasmData: ArrayBuffer, jsData: ArrayBuffer, loadingScreenData: ArrayBuffer, options?: LoadRuntimeOptions) {
+    constructor(wasmData: ArrayBuffer, jsData: ArrayBuffer, loadingScreenData: ArrayBuffer, canvasID?: string) {
         this.inject();
-        this.loadRuntime(wasmData, jsData, loadingScreenData, options);
+        this.loadRuntime(wasmData, jsData, loadingScreenData, canvasID);
     }
 
     waitForReady(): Promise<void> {
@@ -100,20 +68,16 @@ export class WLETraceReplayer implements ReplayBuffer, WLETraceEarlyInjector {
         this._ready = true;
     }
 
-    private async loadRuntime(wasmData: ArrayBuffer, jsData: ArrayBuffer, loadingScreenData: ArrayBuffer, options?: LoadRuntimeOptions) {
+    private async loadRuntime(wasmData: ArrayBuffer, jsData: ArrayBuffer, loadingScreenData: ArrayBuffer, canvasID?: string) {
         const jsTextData = new TextDecoder().decode(jsData);
 
-        const canvas = options?.canvas ?? 'canvas';
+        const canvas = canvasID ?? 'canvas';
         const glCanvas = document.getElementById(canvas);
         if (!glCanvas) {
             throw new Error(`loadRuntime(): Failed to find canvas with id '${canvas}'`);
         }
         if (!(glCanvas instanceof HTMLCanvasElement)) {
             throw new Error(`loadRuntime(): HTML element '${canvas}' must be a canvas`);
-        }
-
-        if (options?.threads) {
-            console.warn('Ignored threads option; threads are not yet supported by WLETraceReplayer');
         }
 
         const wasm = new WASM(false);
@@ -144,20 +108,6 @@ export class WLETraceReplayer implements ReplayBuffer, WLETraceEarlyInjector {
         (window as unknown as { instantiateWonderlandRuntime: unknown }).instantiateWonderlandRuntime = undefined;
 
         await loader(wasm);
-    }
-
-    static async fromUploadedRuntime(options?: LoadRuntimeOptions) {
-        const wasmData = await getUpload('.wasm');
-        const jsData = await getUpload('.js');
-        const loadingScreenData = await getUpload('.bin');
-        const replayer = new WLETraceReplayer(wasmData, jsData, loadingScreenData, options);
-        await replayer.waitForReady();
-        return replayer;
-    }
-
-    static async fromPopupUploadedRuntime(options?: LoadRuntimeOptions) {
-        await makePopupButton('Click to upload runtime files');
-        return WLETraceReplayer.fromUploadedRuntime(options);
     }
 
     get ended(): boolean {
@@ -206,15 +156,6 @@ export class WLETraceReplayer implements ReplayBuffer, WLETraceEarlyInjector {
         this.continue();
     }
 
-    async startFromUpload() {
-        this.start(await getUpload('.wletd'));
-    }
-
-    async startFromUploadPopup() {
-        await makePopupButton('Click to upload replay file');
-        this.startFromUpload();
-    }
-
     get wasm(): WASM | null {
         return this._wasm;
     }
@@ -235,7 +176,7 @@ export class WLETraceReplayer implements ReplayBuffer, WLETraceEarlyInjector {
                 retVal = this.replayBuffer.markCallbackAsReplayed(methodName, args);
             } catch (err) {
                 console.error('[wle-trace REPLAYER] Exception occurred while marking callback as replayed, replay will be stopped');
-                this.disposeReplayBuffer();
+                this.disposeReplayBuffer(true, err);
                 throw err;
             }
 
@@ -258,7 +199,7 @@ export class WLETraceReplayer implements ReplayBuffer, WLETraceEarlyInjector {
                 canContinue = this.replayBuffer.continue();
             } catch (err) {
                 console.error('[wle-trace REPLAYER] Exception occurred while continuing playback, replay will be stopped');
-                this.disposeReplayBuffer();
+                this.disposeReplayBuffer(true, err);
                 throw err;
             }
 
@@ -280,5 +221,9 @@ export class WLETraceReplayer implements ReplayBuffer, WLETraceEarlyInjector {
 
         console.debug('[wle-trace REPLAYER] Replay ended');
         this.replayBuffer = null;
+    }
+
+    onEnded(callback: EndedCallback): void {
+        this._endedCallbacks.push(callback);
     }
 }

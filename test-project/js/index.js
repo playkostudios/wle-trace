@@ -11,7 +11,7 @@
  *     - `wle:auto-benchmark:start` and `wle:auto-benchmark:end`: Append the benchmarking code
  */
 
-import { WLETraceReplayer, injectWLETrace, recordWLETrace } from '@playkostudios/wle-trace';
+import { WLETraceReplayer, injectWLETrace, recordWLETrace, showVisualReplayer } from '@playkostudios/wle-trace';
 import {loadRuntime} from '@wonderlandengine/api';
 import * as API from '@wonderlandengine/api'; // Deprecated: Backward compatibility.
 import * as wleTypeMaps from './wleTypeMaps.json';
@@ -69,8 +69,7 @@ function testRecord() {
 }
 
 async function testReplay() {
-    const replayer = await WLETraceReplayer.fromPopupUploadedRuntime();
-    replayer.startFromUploadPopup();
+    showVisualReplayer();
 }
 
 /* wle:auto-constants:start */
@@ -92,8 +91,8 @@ let engine;
 
 // testSentinel();
 // testResourceManagement();
-testRecord();
-// testReplay();
+// testRecord();
+testReplay();
 
 async function normalLoadRuntime() {
     engine = await loadRuntime(Constants.RuntimeBaseName, {...RuntimeOptions, physx: true, threads: false});
