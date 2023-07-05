@@ -9,26 +9,9 @@ import { MAGIC } from '../common/magic.js';
 import { type CallTypeJSON } from './types/CallTypeJSON.js';
 import { ValueTypeJSON } from './types/ValueTypeJSON.js';
 import { type MethodTypeMapsJSON } from './types/MethodTypeMapsJSON.js';
+import { EventType, NO_RET_BITMASK } from '../common/types/EventType.js';
 
 export const REPLAY_FORMAT_VERSION = 1;
-
-// recorder event types:
-//  event ID | encoding    | description
-// ----------+-------------+-----------------------------------
-//         0 | call        | callback
-//         1 | call        | call
-//         2 | no-ret-call | callback (threw, no return value)
-//         3 | no-ret-call | call (threw, no return value)
-//         4 | multi-dma   | multi-byte DMA
-//         5 | idx-dma-u8  | single-value DMA (u8)
-//         6 | idx-dma-u16 | single-value DMA (u16)
-//         7 | idx-dma-u32 | single-value DMA (u32)
-//         8 | idx-dma-i8  | single-value DMA (i8)
-//         9 | idx-dma-i16 | single-value DMA (i16)
-//        10 | idx-dma-i32 | single-value DMA (i32)
-//        11 | idx-dma-f32 | single-value DMA (f32)
-//        12 | idx-dma-f64 | single-value DMA (f64)
-//  13 - 255 | unused      | unused
 
 // encodings:
 //  encoding type        | byte count or [encoding] | description
@@ -171,6 +154,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
             return;
         }
 
+        this.hookDepth = 0;
         this.recordBuffer = null;
         this.stringDictionary.length = 0;
         this.callTypeMap.clear();
@@ -247,6 +231,22 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
         return idx;
     }
 
+    private encodeAllocRef(allocID: number, relOffset: number, bufferView?: DataView, offset: number = 0) {
+        let enc, encView;
+
+        if (bufferView) {
+            enc = bufferView.buffer;
+            encView = bufferView;
+        } else {
+            enc = new ArrayBuffer(8);
+            encView = new DataView(enc);
+        }
+
+        encView.setUint32(offset, allocID + 1);
+        encView.setUint32(offset + 4, relOffset);
+        return enc;
+    }
+
     private recordValue(val: unknown, expectedType: ValueType): boolean {
         let enc: ArrayBuffer;
         const valType = typeof val;
@@ -317,10 +317,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
             } else {
                 // non-null pointer, encode in long format
                 const [allocID, relOffset] = this.allocMap.getID(val as number);
-                enc = new ArrayBuffer(8);
-                const encView = new DataView(enc);
-                encView.setUint32(0, allocID + 1);
-                encView.setUint32(4, relOffset);
+                enc = this.encodeAllocRef(allocID, relOffset);
             }
         } else if (expectedType === ValueType.PointerFree) {
             if (valType !== 'number') {
@@ -376,7 +373,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
             return;
         }
 
-        // console.debug(`[wle-trace RECORDER] record call${isCall ? '' : 'back'}`, methodName, args, threw, retVal);
+        console.debug(`[wle-trace RECORDER] record call${isCall ? '' : 'back'}`, methodName);
 
         try {
             // get index of method name
@@ -385,7 +382,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
             // prepare header of method call(back)
             const headerBuffer = new ArrayBuffer(5);
             const headerBufferView = new DataView(headerBuffer);
-            headerBufferView.setUint8(0, (isCall ? 1 : 0) | (threw ? 2 : 0));
+            headerBufferView.setUint8(0, (isCall ? EventType.Call : EventType.Callback) | (threw ? NO_RET_BITMASK : 0));
             headerBufferView.setUint32(1, methodIdx);
 
             this.recordBuffer.push(headerBuffer);
@@ -616,15 +613,14 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
 
             // get mapped memory location
             const dmaLen = srcCopyCast.byteLength;
+            console.debug('[wle-trace RECORDER] record dma', dmaLen, '@', offset);
             const [allocID, relOffset] = this.allocMap.getIDFromRange(offset, offset + dmaLen);
 
             // prepare header of dma set
-            // console.debug('[wle-trace RECORDER] record dma', dmaLen, '@', offset);
             const headerBuffer = new ArrayBuffer(13);
             const headerBufferView = new DataView(headerBuffer);
-            headerBufferView.setUint8(0, 4);
-            headerBufferView.setUint32(1, allocID);
-            headerBufferView.setUint32(5, relOffset);
+            headerBufferView.setUint8(0, EventType.MultiDMA);
+            this.encodeAllocRef(allocID, relOffset, headerBufferView, 1);
             headerBufferView.setUint32(9, dmaLen);
 
             this.recordBuffer.push(headerBuffer);
@@ -632,14 +628,86 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
             // add buffer to replay buffer
             this.recordBuffer.push(srcCopyCast);
         } catch (err) {
-            console.error('[wle-trace RECORDER] Exception occurred while recording DMA, recording will be discarded');
+            console.error('[wle-trace RECORDER] Exception occurred while recording multi-byte DMA, recording will be discarded');
             this.discard();
             throw err;
         }
     }
 
     recordWASMSingleDMA(dst: TypedArray, offset: number, value: number) {
-        // TODO
+        if (!this.recordBuffer || this._wasm === null) {
+            return;
+        }
+
+        // verify that we are in a hook and that the destination is the heap
+        if (!this.inHook || !this.isHeapBuffer(dst.buffer)) {
+            return;
+        }
+
+        try {
+            // get allocated offset
+            const absOffset = dst.byteOffset + offset;
+            const [allocID, relOffset] = this.allocMap.getID(absOffset);
+
+            // generate buffer for header and value
+            const byteCount = dst.BYTES_PER_ELEMENT;
+            const buf = new ArrayBuffer(9 + byteCount);
+            const view = new DataView(buf);
+
+            // encode alloc ref
+            this.encodeAllocRef(allocID, relOffset, view, 1);
+
+            // encode DMA type and value
+            if (byteCount === 1) {
+                // i8, u8 or clamped u8
+                if (dst instanceof Int8Array) {
+                    view.setUint8(0, EventType.IndexDMAi8);
+                    view.setInt8(9, value);
+                } else if (dst instanceof Uint8Array) {
+                    view.setUint8(0, EventType.IndexDMAu8);
+                    view.setUint8(9, value);
+                } else {
+                    view.setUint8(0, EventType.IndexDMAu8);
+                    view.setUint8(9, Math.max(0, Math.min(255, Math.round(value))));
+                }
+            } else if (byteCount === 2) {
+                // i16 or u16
+                if (dst instanceof Int16Array) {
+                    view.setUint8(0, EventType.IndexDMAi16);
+                    view.setInt16(9, value);
+                } else {
+                    view.setUint8(0, EventType.IndexDMAu16);
+                    view.setUint16(9, value);
+                }
+            } else if (byteCount === 4) {
+                // i32, u32 or f32
+                if (dst instanceof Int32Array) {
+                    view.setUint8(0, EventType.IndexDMAi32);
+                    view.setInt32(9, value);
+                } else if (dst instanceof Uint32Array) {
+                    view.setUint8(0, EventType.IndexDMAu32);
+                    view.setUint32(9, value);
+                } else {
+                    view.setUint8(0, EventType.IndexDMAf32);
+                    view.setFloat32(9, value);
+                }
+            } else if (byteCount === 8) {
+                // f64 or bigint (unsupported)
+                // assume it's f64, since instanceof is expensive
+                view.setUint8(0, EventType.IndexDMAf64);
+                view.setFloat64(9, value);
+            } else {
+                // unknown
+                throw new Error('Unknown TypedArray')
+            }
+
+            // record buffer
+            this.recordBuffer.push(buf);
+        } catch (err) {
+            console.error('[wle-trace RECORDER] Exception occurred while recording single-value DMA, recording will be discarded');
+            this.discard();
+            throw err;
+        }
     }
 
     enterHook() {
