@@ -368,6 +368,12 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
         return handleMemChanges;
     }
 
+    private handleError(err: unknown, action: string): void {
+        console.error(err);
+        console.error(`[wle-trace RECORDER] Exception occurred while ${action}, recording will be discarded`);
+        this.discard();
+    }
+
     recordWASMGeneric(isCall: boolean, methodName: string, args: any[], threw: boolean, retVal?: any) {
         if (!this.recordBuffer || this._wasm === null) {
             return;
@@ -551,9 +557,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
                 }
             }
         } catch (err) {
-            console.error(`[wle-trace RECORDER] Exception occurred while recording WASM call${isCall ? '' : 'back'}, recording will be discarded`);
-            this.discard();
-            throw err;
+            this.handleError(err, `recording WASM call${isCall ? '' : 'back'}`);
         }
     }
 
@@ -628,9 +632,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
             // add buffer to replay buffer
             this.recordBuffer.push(srcCopyCast);
         } catch (err) {
-            console.error('[wle-trace RECORDER] Exception occurred while recording multi-byte DMA, recording will be discarded');
-            this.discard();
-            throw err;
+            this.handleError(err, 'recording multi-byte DMA');
         }
     }
 
@@ -711,9 +713,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
             // record buffer
             this.recordBuffer.push(buf);
         } catch (err) {
-            console.error('[wle-trace RECORDER] Exception occurred while recording single-value DMA, recording will be discarded');
-            this.discard();
-            throw err;
+            this.handleError(err, 'recording indexed/single-value DMA');
         }
     }
 

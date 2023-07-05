@@ -4,7 +4,7 @@ import { type WLETraceRecorder } from '../WLETraceRecorder.js';
 const recorderMap = new WeakMap<TypedArray, WLETraceRecorder>();
 
 const typedArrayHandler: ProxyHandler<TypedArray> = {
-    set(target, p, newValue, _receiver) {
+    set(target, p, newValue) {
         if (typeof p === 'string') {
             const num = Number(p);
             if (num >= 0 && num < target.length && Number.isInteger(num)) {
@@ -12,14 +12,15 @@ const typedArrayHandler: ProxyHandler<TypedArray> = {
                 if (recorder) {
                     recorder.recordWASMSingleDMA(target, num, newValue as number);
                 }
+
+                Reflect.set(target, num, newValue);
             }
         }
 
-        (target as Record<string | symbol, any>)[p] = newValue;
         return true;
     },
-    get(target, p, _receiver) {
-        const val = (target as Record<string | symbol, any>)[p];
+    get(target, p) {
+        const val = Reflect.get(target, p);
 
         if (typeof val === 'function') {
             return val.bind(target);
@@ -27,9 +28,6 @@ const typedArrayHandler: ProxyHandler<TypedArray> = {
             return val;
         }
     },
-    ownKeys(target) {
-        return Reflect.ownKeys(target);
-    }
 };
 
 export function wrapTypedArray<T extends TypedArray>(recorder: WLETraceRecorder, array: T): T {
