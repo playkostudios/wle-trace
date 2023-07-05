@@ -4,8 +4,8 @@ type InstanceHandler<T> = (newInstance: T, args: any[]) => T | undefined;
 const handlerMap = new WeakMap<GenericClass, InstanceHandler<unknown>>();
 
 const constructHandler: ProxyHandler<GenericClass> = {
-    construct(target, argArray) {
-        let newInstance = new target(...argArray);
+    construct(target, argArray, newTarget) {
+        let newInstance = Reflect.construct(target, argArray, newTarget);
         const handler = handlerMap.get(target);
         if (handler) {
             const replacement = handler(newInstance, argArray);
