@@ -651,7 +651,8 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
 
             // generate buffer for header and value
             const byteCount = dst.BYTES_PER_ELEMENT;
-            const buf = new ArrayBuffer(9 + byteCount);
+            const headerSize = 9;
+            const buf = new ArrayBuffer(headerSize + byteCount);
             const view = new DataView(buf);
 
             // encode alloc ref
@@ -662,40 +663,46 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
                 // i8, u8 or clamped u8
                 if (dst instanceof Int8Array) {
                     view.setUint8(0, EventType.IndexDMAi8);
-                    view.setInt8(9, value);
+                    view.setInt8(headerSize, value);
                 } else if (dst instanceof Uint8Array) {
                     view.setUint8(0, EventType.IndexDMAu8);
-                    view.setUint8(9, value);
+                    view.setUint8(headerSize, value);
                 } else {
                     view.setUint8(0, EventType.IndexDMAu8);
-                    view.setUint8(9, Math.max(0, Math.min(255, Math.round(value))));
+                    if (value <= 0) {
+                        view.setUint8(headerSize, 0);
+                    } else if (value >= 255) {
+                        view.setUint8(headerSize, 255);
+                    } else {
+                        view.setUint8(headerSize, Math.round(value));
+                    }
                 }
             } else if (byteCount === 2) {
                 // i16 or u16
                 if (dst instanceof Int16Array) {
                     view.setUint8(0, EventType.IndexDMAi16);
-                    view.setInt16(9, value);
+                    view.setInt16(headerSize, value);
                 } else {
                     view.setUint8(0, EventType.IndexDMAu16);
-                    view.setUint16(9, value);
+                    view.setUint16(headerSize, value);
                 }
             } else if (byteCount === 4) {
                 // i32, u32 or f32
                 if (dst instanceof Int32Array) {
                     view.setUint8(0, EventType.IndexDMAi32);
-                    view.setInt32(9, value);
+                    view.setInt32(headerSize, value);
                 } else if (dst instanceof Uint32Array) {
                     view.setUint8(0, EventType.IndexDMAu32);
-                    view.setUint32(9, value);
+                    view.setUint32(headerSize, value);
                 } else {
                     view.setUint8(0, EventType.IndexDMAf32);
-                    view.setFloat32(9, value);
+                    view.setFloat32(headerSize, value);
                 }
             } else if (byteCount === 8) {
                 // f64 or bigint (unsupported)
                 // assume it's f64, since instanceof is expensive
                 view.setUint8(0, EventType.IndexDMAf64);
-                view.setFloat64(9, value);
+                view.setFloat64(headerSize, value);
             } else {
                 // unknown
                 throw new Error('Unknown TypedArray')
