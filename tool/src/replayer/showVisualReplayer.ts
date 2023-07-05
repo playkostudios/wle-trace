@@ -164,10 +164,16 @@ function startFromUploadPopup(replayer: WLETraceReplayer): Promise<void> {
 
 export function showVisualReplayer(onStarted?: (replayer: WLETraceReplayer) => void): Promise<void> {
     return new Promise(async (resolve, reject) => {
+        let done = false;
         try {
             const replayer = await makeReplayerFromRuntimePopup();
 
             replayer.onEnded((isError, err) => {
+                if (done) {
+                    return;
+                }
+
+                done = true;
                 if (isError) {
                     makeSnackbar('Replay ended; error occurred, check console for details', true);
                     reject(err);
@@ -183,7 +189,12 @@ export function showVisualReplayer(onStarted?: (replayer: WLETraceReplayer) => v
                 onStarted(replayer);
             }
         } catch (err) {
-            makeSnackbar('Replay failed to start; error occurred, check console for details', true);
+            if (done) {
+                return;
+            }
+
+            done = true;
+            makeSnackbar('Replay failed to start; check console for details', true);
             reject(err);
         }
     })

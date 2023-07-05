@@ -43,17 +43,21 @@ export class WLETraceReplayer implements ReplayBuffer, WLETraceEarlyInjector {
         });
     }
 
+    private loadFail(err: unknown) {
+        if (Array.isArray(this._ready)) {
+            for (const [_resolve, reject] of this._ready) {
+                reject(err);
+            }
+        }
+
+        this._ready = false;
+    }
+
     private async inject() {
         try {
             await injectWASMReplayer(this);
         } catch (err) {
-            if (Array.isArray(this._ready)) {
-                for (const [_resolve, reject] of this._ready) {
-                    reject(err);
-                }
-            }
-
-            this._ready = false;
+            this.loadFail(err);
             return;
         }
 
@@ -69,45 +73,55 @@ export class WLETraceReplayer implements ReplayBuffer, WLETraceEarlyInjector {
     }
 
     private async loadRuntime(wasmData: ArrayBuffer, jsData: ArrayBuffer, loadingScreenData: ArrayBuffer, canvasID?: string) {
-        const jsTextData = new TextDecoder().decode(jsData);
+        setTimeout(() => {
+            if (this._ready !== true) {
+                this.loadFail(new Error('Runtime loader timed out'));
+            }
+        }, 10000);
 
-        const canvas = canvasID ?? 'canvas';
-        const glCanvas = document.getElementById(canvas);
-        if (!glCanvas) {
-            throw new Error(`loadRuntime(): Failed to find canvas with id '${canvas}'`);
+        try {
+            const jsTextData = new TextDecoder().decode(jsData);
+
+            const canvas = canvasID ?? 'canvas';
+            const glCanvas = document.getElementById(canvas);
+            if (!glCanvas) {
+                throw new Error(`loadRuntime(): Failed to find canvas with id '${canvas}'`);
+            }
+            if (!(glCanvas instanceof HTMLCanvasElement)) {
+                throw new Error(`loadRuntime(): HTML element '${canvas}' must be a canvas`);
+            }
+
+            const wasm = new WASM(false);
+            const wasmRO = wasm as {
+                wasm: ArrayBuffer,
+                canvas: HTMLCanvasElement,
+            };
+
+            wasmRO.wasm = wasmData;
+            wasmRO.canvas = glCanvas;
+
+            Object.defineProperty(wasm, 'worker', {
+                get() {
+                    throw new Error('You are trying to load a threaded runtime file, which is not supported by wle-trace yet. Please re-record the demo file in a single-threaded runtime');
+                },
+            })
+
+            const engine = new WonderlandEngine(wasm, loadingScreenData);
+            (engine as unknown as { scene: DummyScene }).scene = new DummyScene();
+
+            (0, eval)(jsTextData);
+            const loader = (window as unknown as { instantiateWonderlandRuntime: (wasm: WASM) => Promise<void> }).instantiateWonderlandRuntime;
+
+            if (loader === undefined) {
+                throw new Error(`JavaScript runtime file did not result in a runtime loader being defined. Is this the right file? ${badVersionErr}`);
+            }
+
+            (window as unknown as { instantiateWonderlandRuntime: unknown }).instantiateWonderlandRuntime = undefined;
+
+            await loader(wasm);
+        } catch(err) {
+            this.loadFail(err);
         }
-        if (!(glCanvas instanceof HTMLCanvasElement)) {
-            throw new Error(`loadRuntime(): HTML element '${canvas}' must be a canvas`);
-        }
-
-        const wasm = new WASM(false);
-        const wasmRO = wasm as {
-            wasm: ArrayBuffer,
-            canvas: HTMLCanvasElement,
-        };
-
-        wasmRO.wasm = wasmData;
-        wasmRO.canvas = glCanvas;
-
-        Object.defineProperty(wasm, 'worker', {
-            get() {
-                throw new Error('You are trying to load a threaded runtime file, which is not supported by wle-trace yet. Please re-record the demo file in a single-threaded runtime');
-            },
-        })
-
-        const engine = new WonderlandEngine(wasm, loadingScreenData);
-        (engine as unknown as { scene: DummyScene }).scene = new DummyScene();
-
-        (0, eval)(jsTextData);
-        const loader = (window as unknown as { instantiateWonderlandRuntime: (wasm: WASM) => Promise<void> }).instantiateWonderlandRuntime;
-
-        if (loader === undefined) {
-            throw new Error(`JavaScript runtime file did not result in a runtime loader being defined. Is this the right file? ${badVersionErr}`);
-        }
-
-        (window as unknown as { instantiateWonderlandRuntime: unknown }).instantiateWonderlandRuntime = undefined;
-
-        await loader(wasm);
     }
 
     get ended(): boolean {
@@ -214,13 +228,17 @@ export class WLETraceReplayer implements ReplayBuffer, WLETraceEarlyInjector {
         }
     }
 
-    private disposeReplayBuffer() {
+    private disposeReplayBuffer(isError = false, err?: unknown) {
         if (!this.replayBuffer) {
             throw new Error('Already disposed or not initialized');
         }
 
         console.debug('[wle-trace REPLAYER] Replay ended');
         this.replayBuffer = null;
+
+        for (const callback of this._endedCallbacks) {
+            callback(isError, err);
+        }
     }
 
     onEnded(callback: EndedCallback): void {

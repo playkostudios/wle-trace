@@ -11,6 +11,7 @@ export function makeSnackbar(text: string, isError = false) {
     container.style.borderRadius = '16px';
     container.style.display = 'flex';
     container.style.flexDirection = 'column';
+    container.style.fontFamily = 'sans';
     document.body.appendChild(container);
 
     const span = makeTextRow(container, text);
