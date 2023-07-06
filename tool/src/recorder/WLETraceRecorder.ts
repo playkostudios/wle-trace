@@ -558,6 +558,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
         // verify that the dma offset is in the bounds of the destination, and
         // that the dma length is non-zero
         const dstBuf = dst.buffer;
+        offset *= dst.BYTES_PER_ELEMENT;
         offset += dst.byteOffset;
 
         if ((dstBuf.byteLength - offset) <= 0 || offset < 0 || src.length === 0) {

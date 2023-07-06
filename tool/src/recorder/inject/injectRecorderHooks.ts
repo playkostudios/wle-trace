@@ -6,8 +6,8 @@ import { type WLETraceRecorder } from '../WLETraceRecorder.js';
 export function injectRecorderHooks(recorder: WLETraceRecorder, proto: any, name: string) {
     const isCall = !name.startsWith('_wljs_');
     if (isCall) {
-        // only allow _wl_ prefixes, _malloc and _free
-        if (name !== '_malloc' && name !== '_free' && !name.startsWith('_wl_')) {
+        // only allow _wl_ prefixes, _malloc, _free and stringToUTF8
+        if (name !== '_malloc' && name !== '_free' && name !== 'stringToUTF8' && !name.startsWith('_wl_')) {
             return;
         }
     }

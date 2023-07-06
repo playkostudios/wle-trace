@@ -6,10 +6,6 @@ export async function lateInjectWonderlandEngineRecorder(recorder: WLETraceRecor
     const wasm = recorder.wasm;
 
     for (const name of Object.getOwnPropertyNames(wasm)) {
-        if (!name.startsWith('_')) {
-            continue;
-        }
-
         injectRecorderHooks(recorder, wasm, name);
     }
 

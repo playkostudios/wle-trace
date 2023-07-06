@@ -243,7 +243,8 @@
         "_wl_i18n_languageCode": { "args": ["u32"], "ret": "ptr_temp" },
         "_wl_i18n_languageName": { "args": ["u32"], "ret": "ptr_temp" },
         "_wl_reset_context": { "args": [] },
-        "_wl_application_stop": { "args": [] }
+        "_wl_application_stop": { "args": [] },
+        "stringToUTF8": { "args": ["str","ptr","u32"] }
     },
     "callbacks": {
         "_wljs_xr_session_start": { "args": ["str"] },
