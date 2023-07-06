@@ -31,14 +31,14 @@ export abstract class BaseAllocationMap {
     }
 
     private deallocateFromIdx(index: number) {
-        console.debug(`[wle-trace ALLOC_MAP] deallocated ID ${this.raw[index]}, range ${this.raw[index + 1]}:${this.raw[index + 2]}`);
+        // console.debug(`[wle-trace ALLOC_MAP] deallocated ID ${this.raw[index]}, range ${this.raw[index + 1]}:${this.raw[index + 2]}`);
         this.raw.splice(index, 3);
     }
 
     private handleOverlap(index: number) {
         // throw new Error("Allocation failed; overlapping memory ranges");
         this.deallocateFromIdx(index);
-        console.warn('[wle-trace ALLOC_MAP] deallocated due to overlapping memory range');
+        // console.warn('[wle-trace ALLOC_MAP] deallocated due to overlapping memory range');
     }
 
     allocateStride(start: number, stride: number, componentSize: number, count: number): number | null {
@@ -61,7 +61,7 @@ export abstract class BaseAllocationMap {
     allocate(start: number, end: number): number | null {
         if (start === end) {
             // XXX this can naturally happen for pre-allocated empty strings
-            console.warn("[wle-trace ALLOC_MAP] zero-length allocation; ID incremented but no allocation made");
+            // console.warn("[wle-trace ALLOC_MAP] zero-length allocation; ID incremented but no allocation made");
             this.nextID++;
             return null;
         } else if (start > end) {
@@ -83,7 +83,7 @@ export abstract class BaseAllocationMap {
                 }
 
                 const id = this.nextID++;
-                console.debug(`[wle-trace ALLOC_MAP] allocated ID ${id} (mid of map), range ${start}:${end}`);
+                // console.debug(`[wle-trace ALLOC_MAP] allocated ID ${id} (mid of map), range ${start}:${end}`);
                 this.raw.splice(i, 0, id, start, end);
                 return id;
             } else {
@@ -98,7 +98,7 @@ export abstract class BaseAllocationMap {
 
         // can't insert before any existing range, add to end
         const id = this.nextID++;
-        console.debug(`[wle-trace ALLOC_MAP] allocated ID ${id} (end of map), range ${start}:${end}`);
+        // console.debug(`[wle-trace ALLOC_MAP] allocated ID ${id} (end of map), range ${start}:${end}`);
         this.raw.push(id, start, end);
         return id;
     }

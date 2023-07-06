@@ -414,7 +414,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
             return;
         }
 
-        console.debug(`[wle-trace RECORDER] record call${isCall ? '' : 'back'} leave`, methodName, threw, retVal);
+        // console.debug(`[wle-trace RECORDER] record call${isCall ? '' : 'back'} leave`, methodName, threw, retVal);
 
         try {
             // verify callback is in top of stack
@@ -458,7 +458,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
             return;
         }
 
-        console.debug(`[wle-trace RECORDER] record call${isCall ? '' : 'back'} enter`, methodName, ...args);
+        // console.debug(`[wle-trace RECORDER] record call${isCall ? '' : 'back'} enter`, methodName, ...args);
 
         try {
             // get index of method name
@@ -585,7 +585,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
 
             // get mapped memory location
             const dmaLen = srcCopyCast.byteLength;
-            console.debug('[wle-trace RECORDER] record dma', dmaLen, '@', offset);
+            // console.debug('[wle-trace RECORDER] record dma', dmaLen, '@', offset);
             const [allocID, relOffset] = this.allocMap.getIDFromRange(offset, offset + dmaLen);
 
             // prepare header of dma set

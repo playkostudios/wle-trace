@@ -218,7 +218,7 @@ export class WLETraceReplayer implements WLETraceEarlyInjector {
         }
 
         this.replayBuffer.registerLooseEndCallback(() => {
-            console.debug('!!! loose end')
+            // console.debug('!!! loose end')
             const resolve = this.looseEndResolve;
 
             if (resolve) {
@@ -234,7 +234,7 @@ export class WLETraceReplayer implements WLETraceEarlyInjector {
             let canContinue;
 
             try {
-                console.debug('continuing...')
+                // console.debug('continuing...')
                 canContinue = this.replayBuffer.continue();
             } catch (err) {
                 console.error('[wle-trace REPLAYER] Exception occurred while continuing playback, replay will be stopped');
@@ -243,7 +243,7 @@ export class WLETraceReplayer implements WLETraceEarlyInjector {
             }
 
             if (canContinue) {
-                console.debug('waiting for loose end...')
+                // console.debug('waiting for loose end...')
                 await this.waitForLooseEnd();
 
                 if (this.replayBuffer.ended) {

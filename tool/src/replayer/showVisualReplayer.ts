@@ -93,9 +93,7 @@ function makeReplayerFromRuntimePopup(): Promise<WLETraceReplayer> {
 
                 try {
                     const replayer = new WLETraceReplayer(...argTuple);
-                    console.debug('!!! before waitForReady')
                     await replayer.waitForReady();
-                    console.debug('!!! after waitForReady')
                     resolve(replayer);
                 } catch (err) {
                     reject(err);

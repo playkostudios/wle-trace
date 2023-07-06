@@ -47,7 +47,7 @@ export class ReplayBufferV1 implements ReplayBuffer {
     }
 
     markCallbackAsReplayed(methodName: string, args: unknown[]): unknown {
-        console.debug(`markCallbackAsReplayed: offset 0x${(this.offset + this.headerSize).toString(16)}`);
+        // console.debug(`markCallbackAsReplayed: offset 0x${(this.offset + this.headerSize).toString(16)}`);
         const eventType = this.bufferView.getUint8(this.offset);
 
         if (eventType !== EventType.Callback) {
@@ -104,12 +104,12 @@ export class ReplayBufferV1 implements ReplayBuffer {
 
         const [threw, retVal] = callbackResult;
 
-        console.debug('callback done', methodName);
+        // console.debug('callback done', methodName);
 
         if (this.callStack.length === 0 && this.callbackRetStack.length === 0 && (this.hasNonCallbackNext() || this.ended)) {
             // XXX loose end! queue up an event via a timeout to continue the
             //     playback
-            console.debug('loose end from callback done', methodName);
+            // console.debug('loose end from callback done', methodName);
             setTimeout(() => {
                 for (const callback of this.looseEndCallbacks) {
                     callback();
@@ -139,7 +139,7 @@ export class ReplayBufferV1 implements ReplayBuffer {
         const end = this.buffer.byteLength - this.headerSize;
 
         while (this.offset < end) {
-            console.debug(`continue: offset 0x${(this.offset + this.headerSize).toString(16)}`);
+            // console.debug(`continue: offset 0x${(this.offset + this.headerSize).toString(16)}`);
             const eventType: EventType = this.bufferView.getUint8(this.offset);
             this.offset++;
 
@@ -148,7 +148,7 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 //     back
                 const methodIdx = this.bufferView.getUint32(this.offset);
                 const methodName = this.stringDictionary[methodIdx];
-                console.debug('replay waiting for callback...', methodName, 'str idx', methodIdx);
+                // console.debug('replay waiting for callback...', methodName, 'str idx', methodIdx);
                 this.offset--;
                 break; // callback, wait for a callback-as-replayed mark
             } else if (eventType === EventType.Call) {
@@ -180,7 +180,7 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 this.callStack.push([methodIdx, true]);
 
                 // do call
-                console.debug('replay call', methodName, ...args);
+                // console.debug('replay call', methodName, ...args);
                 let threw = false;
                 let retVal;
                 let err;
@@ -269,7 +269,7 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 const byteOffset = this.decodeAllocRef();
                 const byteLength = this.bufferView.getUint32(this.offset);
                 this.offset += 4;
-                console.debug('replay dma', byteLength, 'bytes @', byteOffset, ';end=', byteOffset + byteLength, '; heap8 end=', this.wasm.HEAPU8.byteLength);
+                // console.debug('replay dma', byteLength, 'bytes @', byteOffset, ';end=', byteOffset + byteLength, '; heap8 end=', this.wasm.HEAPU8.byteLength);
                 this.wasm.HEAPU8.set(new Uint8Array(this.buffer, this.offset + this.headerSize, byteLength), byteOffset);
                 this.offset += byteLength;
             } else if (eventType >= EventType.IndexDMAu8 && eventType <= EventType.IndexDMAf64) {
