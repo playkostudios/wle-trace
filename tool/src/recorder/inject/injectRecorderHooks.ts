@@ -20,12 +20,12 @@ export function injectRecorderHooks(recorder: WLETraceRecorder, proto: any, name
                 recorder.recordWASMGenericCallEnter(isCall, methodName, args);
             },
             afterHook: (_wasm: WASM, methodName: string, args: any[], retVal: any) => {
-                recorder.leaveHook();
                 recorder.recordWASMGenericCallLeave(isCall, methodName, args, false, retVal);
+                recorder.leaveHook();
             },
             exceptionHook: (_wasm: WASM, methodName: string, args: any[], _err: unknown) => {
-                recorder.leaveHook();
                 recorder.recordWASMGenericCallLeave(isCall, methodName, args, true);
+                recorder.leaveHook();
             }
         });
 
