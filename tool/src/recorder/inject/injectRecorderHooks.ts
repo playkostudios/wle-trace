@@ -15,17 +15,19 @@ export function injectRecorderHooks(recorder: WLETraceRecorder, proto: any, name
     const descriptor = getPropertyDescriptor(proto, name);
     if (descriptor.value && (typeof descriptor.value) === 'function') {
         injectMethod(proto, name, {
-            beforeHook: (_wasm: WASM, _methodName: string, _args: any[]) => {
+            beforeHook: (_wasm: WASM, methodName: string, args: any[]) => {
                 recorder.enterHook();
+                recorder.recordWASMGenericCallEnter(isCall, methodName, args);
             },
             afterHook: (_wasm: WASM, methodName: string, args: any[], retVal: any) => {
                 recorder.leaveHook();
-                recorder.recordWASMGeneric(isCall, methodName, args, false, retVal);
+                recorder.recordWASMGenericCallLeave(isCall, methodName, args, false, retVal);
             },
             exceptionHook: (_wasm: WASM, methodName: string, args: any[], _err: unknown) => {
                 recorder.leaveHook();
-                recorder.recordWASMGeneric(isCall, methodName, args, true);
+                recorder.recordWASMGenericCallLeave(isCall, methodName, args, true);
             }
         });
+
     }
 }

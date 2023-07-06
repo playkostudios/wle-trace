@@ -2,9 +2,8 @@ import { type WASM } from '@wonderlandengine/api';
 import { ReplayBuffer } from './ReplayBuffer.js';
 import { type MethodTypeMap } from '../common/types/MethodTypeMap.js';
 import { ValueType } from '../common/types/ValueType.js';
-
-// TODO update to final v1 format. this is VERY outdated to the point where it
-//      doesn't load
+import { ReplayV1AllocationMap } from './ReplayV1AllocationMap.js';
+import { EventType } from '../common/types/EventType.js';
 
 export class ReplayBufferV1 implements ReplayBuffer {
     private bufferView: DataView;
@@ -12,13 +11,18 @@ export class ReplayBufferV1 implements ReplayBuffer {
     private stringDictionary = new Array<string>();
     private callTypeMap: MethodTypeMap = new Map<number, ValueType[]>();
     private callbackTypeMap: MethodTypeMap = new Map<number, ValueType[]>();
+    private allocMap: ReplayV1AllocationMap;
+    private callStack = new Array<[methodIdx: number, isCall: boolean]>();
+    private callbackRetStack = new Array<[threw: boolean, retVal?: unknown]>();
+    private looseEndCallbacks = new Array<() => void>();
 
     get ended(): boolean {
-        return this.offset >= this.buffer.byteLength;
+        return this.offset >= (this.buffer.byteLength - this.headerSize);
     }
 
     constructor(private wasm: WASM, private buffer: ArrayBuffer, private headerSize: number) {
         this.bufferView = new DataView(buffer, headerSize);
+        this.allocMap = new ReplayV1AllocationMap(wasm);
 
         // parse dictionary
         this.stringDictionary.length = 0;
@@ -43,14 +47,15 @@ export class ReplayBufferV1 implements ReplayBuffer {
     }
 
     markCallbackAsReplayed(methodName: string, args: unknown[]): unknown {
+        console.debug(`markCallbackAsReplayed: offset 0x${(this.offset + this.headerSize).toString(16)}`);
         const eventType = this.bufferView.getUint8(this.offset);
 
-        if (eventType !== 0 && eventType !== 2) {
+        if (eventType !== EventType.Callback) {
+            debugger;
             throw new Error('Unexpected WASM callback; no callback expected');
         }
 
         this.offset++;
-        const threw = eventType === 2;
 
         // parse and verify method idx
         const methodIdx = this.stringDictionary.indexOf(methodName);
@@ -68,15 +73,6 @@ export class ReplayBufferV1 implements ReplayBuffer {
             throw new Error('WASM callback matches, but callback is not registered in type map');
         }
 
-        // parse return value
-        let retVal;
-        if (!threw) {
-            const retType = types[0];
-            if (retType !== ValueType.Void) {
-                retVal = this.decodeValue(retType);
-            }
-        }
-
         // parse and verify argument values
         const expectedArgCount = types.length - 1;
         const argCount = args.length;
@@ -89,22 +85,65 @@ export class ReplayBufferV1 implements ReplayBuffer {
             const arg = args[i];
             const expectedArg = this.decodeValue(types[i + 1] as ValueType);
 
-            if (arg !== expectedArg) {
-                console.error('[wle-trace REPLAYER] Argument mismatch; expected', expectedArg, ', got', arg);
-                throw new Error(`Unexpected WASM callback argument ${i}; see details in console`);
-            }
+            // TODO
+            // if (arg !== expectedArg) {
+            //     console.error('[wle-trace REPLAYER] Argument mismatch; expected', expectedArg, ', got', arg);
+            //     throw new Error(`Unexpected WASM callback argument ${i}; see details in console`);
+            // }
         }
 
-        return retVal;
+        // continue replay
+        this.callStack.push([methodIdx, false]);
+        this.continue();
+
+        // handle result (throw or return)
+        const callbackResult = this.callbackRetStack.pop();
+        if (callbackResult === undefined) {
+            throw new Error('Callback stack is empty');
+        }
+
+        const [threw, retVal] = callbackResult;
+
+        console.debug('callback done', methodName);
+
+        if (this.callStack.length === 0 && this.callbackRetStack.length === 0 && (this.hasNonCallbackNext() || this.ended)) {
+            // XXX loose end! queue up an event via a timeout to continue the
+            //     playback
+            console.debug('loose end from callback done', methodName);
+            setTimeout(() => {
+                for (const callback of this.looseEndCallbacks) {
+                    callback();
+                }
+            }, 0);
+        }
+
+        if (threw) {
+            throw new Error('Fake error; this callback is meant to throw');
+        } else {
+            // do memory allocations
+            this.allocMap.handleCallAllocationChanges([retVal, ...args], types);
+
+            return retVal;
+        }
+    }
+
+    private hasNonCallbackNext() {
+        if (this.ended) {
+            return false;
+        }
+
+        return this.bufferView.getUint8(this.offset) !== EventType.Callback;
     }
 
     continue(): boolean {
-        const end = this.buffer.byteLength;
+        const end = this.buffer.byteLength - this.headerSize;
+
         while (this.offset < end) {
-            const eventType = this.bufferView.getUint8(this.offset);
+            console.debug(`continue: offset 0x${(this.offset + this.headerSize).toString(16)}`);
+            const eventType: EventType = this.bufferView.getUint8(this.offset);
             this.offset++;
 
-            if (eventType === 0 || eventType === 2) {
+            if (eventType === EventType.Callback) {
                 // XXX we will be visiting this part of the buffer again, go
                 //     back
                 const methodIdx = this.bufferView.getUint32(this.offset);
@@ -112,7 +151,7 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 console.debug('replay waiting for callback...', methodName, 'str idx', methodIdx);
                 this.offset--;
                 break; // callback, wait for a callback-as-replayed mark
-            } else if (eventType === 1 || eventType === 3) {
+            } else if (eventType === EventType.Call) {
                 // wasm call
                 // parse method name
                 const methodIdx = this.bufferView.getUint32(this.offset);
@@ -129,41 +168,143 @@ export class ReplayBufferV1 implements ReplayBuffer {
                     throw new Error('WASM call is not registered in type map');
                 }
 
-                // parse expected return value
-                let hasRetValue = eventType !== 3 && types[0] !== ValueType.Void;
-                let expectedRetVal;
-
-                if (hasRetValue) {
-                    expectedRetVal = this.decodeValue(types[0] as ValueType);
-                }
-
                 // parse arguments
                 const argCount = types.length - 1;
                 const args = new Array(argCount);
 
                 for (let i = 0; i < argCount; i++) {
-                    args[i] = this.decodeValue(types[i + 1] as ValueType);
+                    args[i] = this.decodeValue(types[i + 1]);
                 }
+
+                // add to call stack
+                this.callStack.push([methodIdx, true]);
 
                 // do call
-                console.debug('replay call', methodName, expectedRetVal, ...args);
-                const retVal = (this.wasm as unknown as Record<string, (...args: any[]) => any>)[methodName](...args);
+                console.debug('replay call', methodName, ...args);
+                let threw = false;
+                let retVal;
+                let err;
 
-                // verify return value
-                if (hasRetValue && retVal !== expectedRetVal) {
-                    console.error('[wle-trace REPLAYER] Return value mismatch; expected', expectedRetVal, ', got', retVal);
-                    throw new Error('Unexpected WASM return value; see console for details');
+                try {
+                    retVal = (this.wasm as unknown as Record<string, (...args: any[]) => any>)[methodName](...args);
+                } catch (e) {
+                    err = e;
+                    threw = true;
                 }
-            } else if (eventType === 4) {
-                // dma
-                const byteOffset = this.bufferView.getUint32(this.offset);
-                this.offset += 4;
+
+                // pop from call stack
+                const stackFrame = this.callStack.pop();
+                if (stackFrame === undefined) {
+                    throw new Error('Stack frame missing');
+                }
+
+                const [frameMethodIdx, frameIsCall] = stackFrame;
+
+                if (!frameIsCall || frameMethodIdx !== methodIdx) {
+                    throw new Error('Stack frame mismatch');
+                }
+
+                // there should be a return or throw now
+                const nextEventType = this.bufferView.getUint8(this.offset);
+                this.offset++;
+
+                if (nextEventType === EventType.Return) {
+                    if (threw) {
+                        console.error('[wle-trace REPLAYER] Call unexpectedly threw an exception:', err);
+                        throw new Error('Unexpected call throw');
+                    }
+
+                    const retType = types[0];
+                    if (retType !== ValueType.Void) {
+                        const expectedRetVal = this.decodeValue(retType);
+                        // TODO verify return value
+                    }
+                } else if (nextEventType === EventType.Throw) {
+                    if (!threw) {
+                        console.error("[wle-trace REPLAYER] Call unexpectedly didn't throw an exception");
+                        throw new Error('Unexpected no-throw');
+                    }
+                } else {
+                    throw new Error('Unexpected event type after actual call leave');
+                }
+
+                // do memory allocations
+                this.allocMap.handleCallAllocationChanges([retVal, ...args], types);
+            } else if (eventType === EventType.Return) {
+                const stackFrame = this.callStack.pop();
+                if (stackFrame === undefined) {
+                    throw new Error('Unexpected return event');
+                }
+
+                const [methodIdx, isCall] = stackFrame;
+
+                if (isCall) {
+                    throw new Error('Unexpected call return event');
+                } else {
+                    const thisMethodMap = this.callbackTypeMap.get(methodIdx);
+                    if (thisMethodMap === undefined) {
+                        throw new Error('Callback has no method type map');
+                    }
+
+                    const retVal = this.decodeValue(thisMethodMap[0]);
+                    this.callbackRetStack.push([false, retVal]);
+                    break;
+                }
+            } else if (eventType === EventType.Throw) {
+                const stackFrame = this.callStack.pop();
+                if (stackFrame === undefined) {
+                    throw new Error('Unexpected throw event');
+                }
+
+                const [_methodIdx, isCall] = stackFrame;
+
+                if (isCall) {
+                    throw new Error('Unexpected call throw event');
+                } else {
+                    this.callbackRetStack.push([true, undefined]);
+                }
+                break;
+            } else if (eventType === EventType.MultiDMA) {
+                // multi-byte dma
+                const byteOffset = this.decodeAllocRef();
                 const byteLength = this.bufferView.getUint32(this.offset);
                 this.offset += 4;
                 console.debug('replay dma', byteLength, 'bytes @', byteOffset, ';end=', byteOffset + byteLength, '; heap8 end=', this.wasm.HEAPU8.byteLength);
                 this.wasm.HEAPU8.set(new Uint8Array(this.buffer, this.offset + this.headerSize, byteLength), byteOffset);
                 this.offset += byteLength;
+            } else if (eventType >= EventType.IndexDMAu8 && eventType <= EventType.IndexDMAf64) {
+                // single-value dma
+                const byteOffset = this.decodeAllocRef();
+                const heapBuf = this.wasm.HEAP8.buffer;
+                const heapView = new DataView(heapBuf);
+
+                if (eventType === EventType.IndexDMAu8) {
+                    heapView.setUint8(byteOffset, this.bufferView.getUint8(this.offset));
+                    this.offset += 1;
+                } else if (eventType === EventType.IndexDMAu16) {
+                    heapView.setUint16(byteOffset, this.bufferView.getUint16(this.offset));
+                    this.offset += 2;
+                } else if (eventType === EventType.IndexDMAu32) {
+                    heapView.setUint32(byteOffset, this.bufferView.getUint32(this.offset));
+                    this.offset += 4;
+                } else if (eventType === EventType.IndexDMAi8) {
+                    heapView.setInt8(byteOffset, this.bufferView.getInt8(this.offset));
+                    this.offset += 1;
+                } else if (eventType === EventType.IndexDMAi16) {
+                    heapView.setInt16(byteOffset, this.bufferView.getInt16(this.offset));
+                    this.offset += 2;
+                } else if (eventType === EventType.IndexDMAi32) {
+                    heapView.setInt32(byteOffset, this.bufferView.getInt32(this.offset));
+                    this.offset += 4;
+                } else if (eventType === EventType.IndexDMAf32) {
+                    heapView.setFloat32(byteOffset, this.bufferView.getFloat32(this.offset));
+                    this.offset += 4;
+                } else {
+                    heapView.setFloat64(byteOffset, this.bufferView.getFloat64(this.offset));
+                    this.offset += 8;
+                }
             } else {
+                eventType;
                 debugger;
                 throw new Error('unknown event type');
             }
@@ -172,12 +313,26 @@ export class ReplayBufferV1 implements ReplayBuffer {
         return this.offset < end;
     }
 
+    private decodeAllocRef(): number {
+        const allocID = this.bufferView.getUint32(this.offset);
+        this.offset += 4;
+
+        if (allocID === 0) {
+            throw new Error('Decoded alloc ref with ID 0');
+        }
+
+        const relOffset = this.bufferView.getUint32(this.offset);
+        this.offset += 4;
+        return this.allocMap.getAbsoluteOffset(allocID - 1, relOffset);
+    }
+
     private decodeValue(type: ValueType): unknown {
         let val;
 
         switch (type) {
             case ValueType.Uint32:
             case ValueType.MeshAttributeMeshIndex:
+            case ValueType.PointerAllocSize:
                 val = this.bufferView.getUint32(this.offset);
                 this.offset += 4;
                 break;
@@ -196,6 +351,8 @@ export class ReplayBufferV1 implements ReplayBuffer {
             case ValueType.Boolean:
             case ValueType.MeshAttributeStructPointer:
             case ValueType.IndexDataPointer:
+            case ValueType.PointerAlloc:
+            case ValueType.PointerAllocEnd:
                 val = this.bufferView.getUint8(this.offset) !== 0;
                 this.offset += 1;
                 break;
@@ -212,25 +369,39 @@ export class ReplayBufferV1 implements ReplayBuffer {
             }
             case ValueType.Pointer:
             case ValueType.IndexDataStructPointer:
+            {
+                const allocID = this.bufferView.getUint32(this.offset);
+                this.offset += 4;
+
+                if (allocID === 0) {
+                    val = 0;
+                } else {
+                    const relOffset = this.bufferView.getUint32(this.offset);
+                    this.offset += 4;
+                    val = this.allocMap.getAbsoluteOffset(allocID - 1, relOffset);
+                }
+                break;
+            }
+            case ValueType.PointerFree:
+            {
                 const allocID = this.bufferView.getUint32(this.offset);
                 this.offset += 4;
 
                 if (allocID === 0) {
                     val = null;
                 } else {
-                    const relOffset = this.bufferView.getUint32(this.offset);
-                    this.offset += 4;
-                    val = [allocID - 1, relOffset];
+                    val = this.allocMap.getAbsoluteOffset(allocID - 1, 0);
                 }
                 break;
-            case ValueType.PointerFree:
-                // TODO is this +1?
-                val = this.bufferView.getUint32(this.offset);
-                this.offset += 4;
+            }
+            case ValueType.PointerTemp:
+            case ValueType.Void:
+                // XXX nothing
                 break;
             default:
-                // TODO other cases
-                throw new Error(`Unknown ValueType: ${type}`);
+                if (type < ValueType.PointerPreStart) {
+                    throw new Error(`Unknown ValueType: ${type}`);
+                }
         }
 
         return val;
@@ -267,5 +438,9 @@ export class ReplayBufferV1 implements ReplayBuffer {
 
             methodTypeMap.set(methodIdx, types);
         }
+    }
+
+    registerLooseEndCallback(callback: () => void): void {
+        this.looseEndCallbacks.push(callback);
     }
 }

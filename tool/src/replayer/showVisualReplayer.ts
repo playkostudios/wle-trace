@@ -11,14 +11,18 @@ import { makeSnackbar } from './ui/makeSnackbar.js';
 
 function makeReplayerFromRuntimePopup(): Promise<WLETraceReplayer> {
     return new Promise((resolve, reject) => {
-        const [backdrop, container] = makePopupBox('wle-trace replayer - runtime loader');
+        const [backdrop, container] = makePopupBox('wle-trace replayer');
 
+        let demo: File | null = null;
         let binary: File | null = null;
         let loader: File | null = null;
         let loadingScreen: File | null = null;
 
         // TODO allow urls in picker. only picker needs to be updated,
         //      download logic is already done
+        makeTextRow(container, 'Demo file:');
+        makeTinyTextRow(container, 'e.g. "demo-1688566319760.wletd"');
+        makeFileInput(container, (f) => demo = f, '.wletd');
         makeTextRow(container, 'Engine binary:');
         makeTinyTextRow(container, 'e.g. "WonderlandRuntime.wasm"');
         makeFileInput(container, (f) => binary = f, '.wasm');
@@ -55,9 +59,12 @@ function makeReplayerFromRuntimePopup(): Promise<WLETraceReplayer> {
             loadButton.disabled = true;
             clearError();
             clearStatus();
-            let argTuple: null | [ArrayBuffer, ArrayBuffer, ArrayBuffer] = null;
+            let argTuple: null | [ArrayBuffer, ArrayBuffer, ArrayBuffer, ArrayBuffer] = null;
 
             try {
+                if (!demo) {
+                    throw 'Demo file not picked';
+                }
                 if (!binary) {
                     throw 'Engine binary not picked';
                 }
@@ -68,11 +75,12 @@ function makeReplayerFromRuntimePopup(): Promise<WLETraceReplayer> {
                     throw 'Loading screen not picked';
                 }
 
+                const demoBuf = await getFileOrDownload(demo);
                 const binaryBuf = await getFileOrDownload(binary);
                 const loaderBuf = await getFileOrDownload(loader);
                 const loadingScreenBuf = await getFileOrDownload(loadingScreen);
 
-                argTuple = [binaryBuf, loaderBuf, loadingScreenBuf];
+                argTuple = [demoBuf, binaryBuf, loaderBuf, loadingScreenBuf];
             } catch (err) {
                 setError(err);
             } finally {
@@ -85,75 +93,10 @@ function makeReplayerFromRuntimePopup(): Promise<WLETraceReplayer> {
 
                 try {
                     const replayer = new WLETraceReplayer(...argTuple);
+                    console.debug('!!! before waitForReady')
                     await replayer.waitForReady();
+                    console.debug('!!! after waitForReady')
                     resolve(replayer);
-                } catch (err) {
-                    reject(err);
-                }
-            }
-        });
-    });
-}
-
-function startFromUploadPopup(replayer: WLETraceReplayer): Promise<void> {
-    return new Promise((resolve, reject) => {
-        const [backdrop, container] = makePopupBox('wle-trace replayer - demo file picker');
-
-        let demo: File | null = null;
-
-        // TODO allow urls in picker. only picker needs to be updated,
-        //      download logic is already done
-        makeTextRow(container, 'Demo file:');
-        makeTinyTextRow(container, 'e.g. "demo-1688566319760.wletd"');
-        makeFileInput(container, (f) => demo = f, '.wletd');
-        makeSeparator(container);
-        const [_statusSpan, clearStatus, setStatus] = makeMutableTextRow(container);
-        const [_errorSpan, clearError, setError] = makeErrorTextRow(container);
-
-        async function getFileOrDownload(file: string | File): Promise<ArrayBuffer> {
-            let fileLike;
-            if (typeof file === 'string') {
-                setStatus(`Downloading ${file}...`);
-                fileLike = await fetch(file);
-                clearStatus();
-                if (!fileLike.ok) {
-                    throw `Bad HTTP status: ${fileLike.status} ${fileLike.statusText}`;
-                }
-            } else {
-                fileLike = file;
-            }
-
-            setStatus('Getting file data...');
-            const buf = await fileLike.arrayBuffer();
-            clearStatus();
-            return buf;
-        }
-
-        const loadButton = makeBRButton(container, 'Load demo', async () => {
-            loadButton.disabled = true;
-            clearError();
-            clearStatus();
-            let demoBuf: null | ArrayBuffer = null;
-
-            try {
-                if (!demo) {
-                    throw 'Demo file not picked';
-                }
-
-                demoBuf = await getFileOrDownload(demo);
-            } catch (err) {
-                setError(err);
-            } finally {
-                clearStatus();
-                loadButton.disabled = false;
-            }
-
-            if (demoBuf !== null) {
-                document.body.removeChild(backdrop);
-
-                try {
-                    replayer.start(demoBuf);
-                    resolve();
                 } catch (err) {
                     reject(err);
                 }
@@ -182,8 +125,6 @@ export function showVisualReplayer(onStarted?: (replayer: WLETraceReplayer) => v
                     resolve();
                 }
             });
-
-            await startFromUploadPopup(replayer);
 
             if (onStarted) {
                 onStarted(replayer);

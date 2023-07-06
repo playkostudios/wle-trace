@@ -1,10 +1,8 @@
-export const NO_RET_BITMASK = 2;
-
 export enum EventType {
     Callback = 0,
     Call = 1,
-    NoRetCallback = Callback | NO_RET_BITMASK, // error thrown, therefore no return value
-    NoRetCall = Call | NO_RET_BITMASK, // error thrown, therefore no return value
+    Throw = 2,
+    Return = 3,
     MultiDMA = 4,
     IndexDMAu8 = 5,
     IndexDMAu16 = 6,

@@ -20,14 +20,44 @@ class DummyScene {
 
 export type EndedCallback = (isError: boolean, err?: unknown) => void;
 
-export class WLETraceReplayer implements ReplayBuffer, WLETraceEarlyInjector {
+export class WLETraceReplayer implements WLETraceEarlyInjector {
     private _wasm: WASM | null = null;
     private replayBuffer: ReplayBuffer | null = null;
     private _ready: Array<[() => void, (err: unknown) => void]> | boolean = [];
     private _endedCallbacks = new Array<EndedCallback>();
+    private _replayBufferFactory: null | (() => ReplayBuffer) = null;
+    private looseEndResolve: null | (() => void) = null;
+    private warnedIgnored = false;
 
-    constructor(wasmData: ArrayBuffer, jsData: ArrayBuffer, loadingScreenData: ArrayBuffer, canvasID?: string) {
-        this.inject();
+    constructor(demoBuffer: ArrayBuffer, wasmData: ArrayBuffer, jsData: ArrayBuffer, loadingScreenData: ArrayBuffer, canvasID?: string) {
+        // verify magic and get version
+        const magicSize = MAGIC.byteLength;
+        if (demoBuffer.byteLength < (magicSize + 2)) {
+            throw new Error('Invalid demo file; too small');
+        }
+
+        const thisMagic = new Uint8Array(demoBuffer, 0, magicSize);
+        for (let i = 0; i < magicSize; i++) {
+            if (thisMagic[i] !== MAGIC[i]) {
+                throw new Error('Invalid demo file; wrong magic number');
+            }
+        }
+
+        const bufferView = new DataView(demoBuffer);
+        const version = bufferView.getUint16(magicSize);
+
+        // make factory for correct replay buffer parser
+        if (version === 1) {
+            this._replayBufferFactory = () => {
+                return new ReplayBufferV1(this._wasm!, demoBuffer, magicSize + 2);
+            };
+        } else {
+            throw new Error(`Invalid demo file; unsupported format version (${version})`);
+        }
+
+        // load engine replay
+        console.debug(`[wle-trace REPLAYER] Loaded WLE demo file with ${demoBuffer.byteLength} bytes. Waiting for engine to initialize...`);
+        this.inject((_wasm) => {});
         this.loadRuntime(wasmData, jsData, loadingScreenData, canvasID);
     }
 
@@ -53,23 +83,13 @@ export class WLETraceReplayer implements ReplayBuffer, WLETraceEarlyInjector {
         this._ready = false;
     }
 
-    private async inject() {
+    private async inject(callback: (wasm: WASM) => void) {
         try {
-            await injectWASMReplayer(this);
+            await injectWASMReplayer(this, callback);
         } catch (err) {
             this.loadFail(err);
             return;
         }
-
-        console.debug('[wle-trace REPLAYER] Late init hook called; recorder is ready for a demo file');
-
-        if (Array.isArray(this._ready)) {
-            for (const [resolve, _reject] of this._ready) {
-                resolve();
-            }
-        }
-
-        this._ready = true;
     }
 
     private async loadRuntime(wasmData: ArrayBuffer, jsData: ArrayBuffer, loadingScreenData: ArrayBuffer, canvasID?: string) {
@@ -128,48 +148,6 @@ export class WLETraceReplayer implements ReplayBuffer, WLETraceEarlyInjector {
         return this.replayBuffer === null || this.replayBuffer.ended;
     }
 
-    get replaying(): boolean {
-        return this.replayBuffer !== null;
-    }
-
-    start(buffer: ArrayBuffer) {
-        if (this.replayBuffer) {
-            throw new Error("Can't start replay; already replaying something");
-        }
-
-        if (!this._wasm) {
-            throw new Error("Can't start replay; engine not loaded");
-        }
-
-        // verify magic and get version
-        const magicSize = MAGIC.byteLength;
-        if (buffer.byteLength < (magicSize + 2)) {
-            throw new Error('Invalid demo file; too small');
-        }
-
-        const thisMagic = new Uint8Array(buffer, 0, magicSize);
-        for (let i = 0; i < magicSize; i++) {
-            if (thisMagic[i] !== MAGIC[i]) {
-                throw new Error('Invalid demo file; wrong magic number');
-            }
-        }
-
-        const bufferView = new DataView(buffer);
-        const version = bufferView.getUint16(magicSize);
-
-        // actually start parsing replay file with correct parser, or complain
-        // about invalid versions
-        if (version === 1) {
-            this.replayBuffer = new ReplayBufferV1(this._wasm, buffer, magicSize + 2);
-        } else {
-            throw new Error(`Invalid demo file; unsupported format version (${version})`);
-        }
-
-        // start replay
-        console.debug(`[wle-trace REPLAYER] Replay mode active. Loaded WLE demo file with ${buffer.byteLength} bytes`);
-        this.continue();
-    }
-
     get wasm(): WASM | null {
         return this._wasm;
     }
@@ -179,8 +157,27 @@ export class WLETraceReplayer implements ReplayBuffer, WLETraceEarlyInjector {
             throw new Error('WASM instance already set; are you reusing a replayer?');
         }
 
+        if (!this._replayBufferFactory) {
+            throw new Error('Replay buffer factory not ready; are you reusing a replayer?');
+        }
+
         this._wasm = wasm;
         immediatelyInjectWonderlandEngineReplayer(this);
+
+        console.debug('[wle-trace REPLAYER] Early init hook called; recorder is ready to play demo file');
+
+        if (Array.isArray(this._ready)) {
+            for (const [resolve, _reject] of this._ready) {
+                resolve();
+            }
+        }
+
+        this._ready = true;
+
+        const factory = this._replayBufferFactory;
+        this._replayBufferFactory = null;
+        this.replayBuffer = factory();
+        this.start();
     }
 
     markCallbackAsReplayed(methodName: string, args: unknown[]): unknown {
@@ -194,22 +191,50 @@ export class WLETraceReplayer implements ReplayBuffer, WLETraceEarlyInjector {
                 throw err;
             }
 
-            if (this.replayBuffer.ended) {
-                this.disposeReplayBuffer();
-            }
-
             return retVal;
         } else {
-            console.warn('[wle-trace REPLAYER] callback ignored; not replaying');
+            if (!this.warnedIgnored) {
+                console.warn('[wle-trace REPLAYER] callback ignored; not replaying - this warning will not be shown again');
+                this.warnedIgnored = true;
+            }
+
             return;
         }
     }
 
-    continue(): boolean {
-        if (this.replayBuffer) {
+    private waitForLooseEnd(): Promise<void> {
+        return new Promise((resolve, reject) => {
+            if (this.looseEndResolve) {
+                reject(new Error('Already waiting for a loose end'));
+            } else {
+                this.looseEndResolve = resolve;
+            }
+        });
+    }
+
+    private async start(): Promise<void> {
+        if (!this.replayBuffer) {
+            throw new Error('Replay buffer not set');
+        }
+
+        this.replayBuffer.registerLooseEndCallback(() => {
+            console.debug('!!! loose end')
+            const resolve = this.looseEndResolve;
+
+            if (resolve) {
+                resolve();
+                this.looseEndResolve = null;
+            } else {
+                console.error('[wle-trace REPLAYER] Loose end detected, but replayer is not waiting for it, replay will be stopped');
+                this.disposeReplayBuffer(true, new Error('Loose end detected, but replayer is not waiting for it'));
+            }
+        })
+
+        while (true) {
             let canContinue;
 
             try {
+                console.debug('continuing...')
                 canContinue = this.replayBuffer.continue();
             } catch (err) {
                 console.error('[wle-trace REPLAYER] Exception occurred while continuing playback, replay will be stopped');
@@ -218,13 +243,17 @@ export class WLETraceReplayer implements ReplayBuffer, WLETraceEarlyInjector {
             }
 
             if (canContinue) {
-                return true;
+                console.debug('waiting for loose end...')
+                await this.waitForLooseEnd();
+
+                if (this.replayBuffer.ended) {
+                    this.disposeReplayBuffer();
+                    return;
+                }
             } else {
                 this.disposeReplayBuffer();
-                return false;
+                return;
             }
-        } else {
-            return false;
         }
     }
 
