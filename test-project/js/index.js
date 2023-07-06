@@ -11,10 +11,10 @@
  *     - `wle:auto-benchmark:start` and `wle:auto-benchmark:end`: Append the benchmarking code
  */
 
-import { WLETraceReplayer, injectWLETrace, recordWLETrace, showVisualReplayer } from '@playkostudios/wle-trace';
+import { injectWLETrace, recordWLETrace, showVisualReplayer } from '@playkostudios/wle-trace';
 import {loadRuntime} from '@wonderlandengine/api';
 import * as API from '@wonderlandengine/api'; // Deprecated: Backward compatibility.
-import * as wleTypeMaps from './wleTypeMaps.json';
+import * as wleTypeMaps from '../../type-maps/wle-1.0.4-type-maps.json';
 
 /* wle:auto-imports:start */
 import {MouseLookComponent} from '@wonderlandengine/components';
