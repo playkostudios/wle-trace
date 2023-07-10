@@ -11,6 +11,8 @@ import { ValueTypeJSON } from './types/ValueTypeJSON.js';
 import { type MethodTypeMapsJSON } from './types/MethodTypeMapsJSON.js';
 import { EventType } from '../common/types/EventType.js';
 
+// TODO debug rejections caused by inHook being false
+
 export const REPLAY_FORMAT_VERSION = 1;
 
 // encodings:
@@ -317,7 +319,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
 
             enc = new ArrayBuffer(4);
             new DataView(enc).setUint32(0, this.getStringIdx(val as string));
-        } else if (expectedType === ValueType.Pointer || expectedType === ValueType.IndexDataStructPointer) {
+        } else if (expectedType === ValueType.Pointer || expectedType === ValueType.IndexDataStructPointer || expectedType === ValueType.MeshAttributeStructPointer) {
             if (valType !== 'number') {
                 if (val === undefined || val === null) {
                     val = 0;
@@ -375,17 +377,6 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
             //     which will not be mapped to anything later on, or a
             //     pre-allocated pointer, which doesn't need to be stored
             return expectedType !== ValueType.PointerTemp;
-        } else if (expectedType === ValueType.MeshAttributeStructPointer) {
-            const struct = new Uint32Array(this._wasm!.HEAP8.buffer, val as number, 1);
-            enc = new ArrayBuffer(1);
-            const encView = new DataView(enc);
-
-            if (struct[0] === 255) {
-                encView.setUint8(0, 0);
-            } else {
-                encView.setUint8(0, 1);
-                handleMemChanges = true;
-            }
         } else if (expectedType === ValueType.IndexDataPointer) {
             enc = new ArrayBuffer(1);
             const encView = new DataView(enc);

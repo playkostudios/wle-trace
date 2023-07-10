@@ -83,13 +83,9 @@ export class ReplayBufferV1 implements ReplayBuffer {
 
         for (let i = 0; i < expectedArgCount; i++) {
             const arg = args[i];
-            const expectedArg = this.decodeValue(types[i + 1] as ValueType);
-
-            // TODO
-            // if (arg !== expectedArg) {
-            //     console.error('[wle-trace REPLAYER] Argument mismatch; expected', expectedArg, ', got', arg);
-            //     throw new Error(`Unexpected WASM callback argument ${i}; see details in console`);
-            // }
+            const argType = types[i + 1];
+            const expectedArg = this.decodeValue(argType);
+            this.verifyValue(argType, arg, expectedArg, false);
         }
 
         // continue replay
@@ -133,6 +129,23 @@ export class ReplayBufferV1 implements ReplayBuffer {
         }
 
         return this.bufferView.getUint8(this.offset) !== EventType.Callback;
+    }
+
+    private verifyValue(valType: ValueType, val: unknown, expectedVal: unknown, isReturn: boolean) {
+        if (valType === ValueType.Void || valType === ValueType.PointerTemp || valType >= ValueType.PointerPreStart) {
+            return;
+        } else if (valType === ValueType.IndexDataPointer || valType === ValueType.PointerAlloc || valType === ValueType.PointerAllocEnd) {
+            val = val !== 0;
+        }
+
+        if (val !== expectedVal) {
+            if (valType === ValueType.Float64) {
+                // FIXME these are caused by delta times being different
+                console.warn(`Unexpected ${isReturn ? 'return' : 'argument'} value with type ${valType}; got ${val}, expected ${expectedVal}, now ${performance.now()}`)
+            } else {
+                throw new Error(`Unexpected ${isReturn ? 'return' : 'argument'} value with type ${valType}; got ${val}, expected ${expectedVal}`);
+            }
+        }
     }
 
     continue(): boolean {
@@ -180,7 +193,7 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 this.callStack.push([methodIdx, true]);
 
                 // do call
-                // console.debug('replay call', methodName, ...args);
+                console.debug('replay call', methodName, ...args);
                 let threw = false;
                 let retVal;
                 let err;
@@ -217,7 +230,7 @@ export class ReplayBufferV1 implements ReplayBuffer {
                     const retType = types[0];
                     if (retType !== ValueType.Void) {
                         const expectedRetVal = this.decodeValue(retType);
-                        // TODO verify return value
+                        this.verifyValue(retType, retVal, expectedRetVal, true);
                     }
                 } else if (nextEventType === EventType.Throw) {
                     if (!threw) {
@@ -229,6 +242,7 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 }
 
                 // do memory allocations
+                console.debug('! handle call allocs')
                 this.allocMap.handleCallAllocationChanges([retVal, ...args], types);
             } else if (eventType === EventType.Return) {
                 const stackFrame = this.callStack.pop();
@@ -269,7 +283,7 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 const byteOffset = this.decodeAllocRef();
                 const byteLength = this.bufferView.getUint32(this.offset);
                 this.offset += 4;
-                // console.debug('replay dma', byteLength, 'bytes @', byteOffset, ';end=', byteOffset + byteLength, '; heap8 end=', this.wasm.HEAPU8.byteLength);
+                console.debug('replay multi-byte dma', byteLength, 'bytes @', byteOffset, ';end=', byteOffset + byteLength, '; heap8 end=', this.wasm.HEAPU8.byteLength);
                 this.wasm.HEAPU8.set(new Uint8Array(this.buffer, this.offset + this.headerSize, byteLength), byteOffset);
                 this.offset += byteLength;
             } else if (eventType >= EventType.IndexDMAu8 && eventType <= EventType.IndexDMAf64) {
@@ -277,6 +291,7 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 const byteOffset = this.decodeAllocRef();
                 const heapBuf = this.wasm.HEAP8.buffer;
                 const heapView = new DataView(heapBuf);
+                console.debug('replay single-value dma @', byteOffset);
 
                 if (eventType === EventType.IndexDMAu8) {
                     heapView.setUint8(byteOffset, this.bufferView.getUint8(this.offset));
@@ -349,7 +364,6 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 this.offset += 8;
                 break;
             case ValueType.Boolean:
-            case ValueType.MeshAttributeStructPointer:
             case ValueType.IndexDataPointer:
             case ValueType.PointerAlloc:
             case ValueType.PointerAllocEnd:
@@ -369,6 +383,7 @@ export class ReplayBufferV1 implements ReplayBuffer {
             }
             case ValueType.Pointer:
             case ValueType.IndexDataStructPointer:
+            case ValueType.MeshAttributeStructPointer:
             {
                 const allocID = this.bufferView.getUint32(this.offset);
                 this.offset += 4;

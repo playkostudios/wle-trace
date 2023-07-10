@@ -17,7 +17,7 @@ export abstract class BaseAllocationMap {
                 // wanted triplet value matched
                 return focus - tripletIdx;
             } else {
-                // unwanted tripled value matched
+                // unwanted triplet value matched
                 focus = this.raw.indexOf(value, focus + 1);
             }
         }
@@ -32,6 +32,10 @@ export abstract class BaseAllocationMap {
 
     private deallocateFromIdx(index: number) {
         // console.debug(`[wle-trace ALLOC_MAP] deallocated ID ${this.raw[index]}, range ${this.raw[index + 1]}:${this.raw[index + 2]}`);
+        // if ((index % 3) !== 0) {
+        //     throw new Error("Can't deallocate index which is not a multiple of 3");
+        // }
+
         this.raw.splice(index, 3);
     }
 
@@ -84,6 +88,9 @@ export abstract class BaseAllocationMap {
 
                 const id = this.nextID++;
                 // console.debug(`[wle-trace ALLOC_MAP] allocated ID ${id} (mid of map), range ${start}:${end}`);
+                if ((i % 3) !== 0) {
+                    throw new Error("Can't allocate at index which is not a multiple of 3");
+                }
                 this.raw.splice(i, 0, id, start, end);
                 return id;
             } else {
@@ -119,8 +126,11 @@ export abstract class BaseAllocationMap {
             throw new Error("Can't deallocate memory range; not allocated");
         }
 
-        const id = this.raw[index - 1];
-        this.raw.splice(index - 1, 3);
+        // if ((index % 3) !== 0) {
+        //     throw new Error("Can't deallocate index which is not a multiple of 3");
+        // }
+        const id = this.raw[index];
+        this.raw.splice(index, 3);
         return id;
     }
 
@@ -385,7 +395,7 @@ export abstract class BaseAllocationMap {
     getAbsoluteOffset(allocID: number, relOffset: number): number {
         const idx = this.getIndexFromValue(allocID, 0);
         if (idx === null) {
-            throw new Error('Invalid allocation ID');
+            throw new Error(`Invalid allocation ID: ${allocID}`);
         }
 
         const start = this.raw[idx + 1];
