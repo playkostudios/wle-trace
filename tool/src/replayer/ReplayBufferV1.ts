@@ -193,7 +193,7 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 this.callStack.push([methodIdx, true]);
 
                 // do call
-                console.debug('replay call', methodName, ...args);
+                // console.debug('replay call', methodName, ...args);
                 let threw = false;
                 let retVal;
                 let err;
@@ -242,7 +242,7 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 }
 
                 // do memory allocations
-                console.debug('! handle call allocs')
+                // console.debug('! handle call allocs')
                 this.allocMap.handleCallAllocationChanges([retVal, ...args], types);
             } else if (eventType === EventType.Return) {
                 const stackFrame = this.callStack.pop();
@@ -283,7 +283,7 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 const byteOffset = this.decodeAllocRef();
                 const byteLength = this.bufferView.getUint32(this.offset);
                 this.offset += 4;
-                console.debug('replay multi-byte dma', byteLength, 'bytes @', byteOffset, ';end=', byteOffset + byteLength, '; heap8 end=', this.wasm.HEAPU8.byteLength);
+                // console.debug('replay multi-byte dma', byteLength, 'bytes @', byteOffset, ';end=', byteOffset + byteLength, '; heap8 end=', this.wasm.HEAPU8.byteLength);
                 this.wasm.HEAPU8.set(new Uint8Array(this.buffer, this.offset + this.headerSize, byteLength), byteOffset);
                 this.offset += byteLength;
             } else if (eventType >= EventType.IndexDMAu8 && eventType <= EventType.IndexDMAf64) {
@@ -291,7 +291,7 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 const byteOffset = this.decodeAllocRef();
                 const heapBuf = this.wasm.HEAP8.buffer;
                 const heapView = new DataView(heapBuf);
-                console.debug('replay single-value dma @', byteOffset);
+                // console.debug('replay single-value dma @', byteOffset);
 
                 if (eventType === EventType.IndexDMAu8) {
                     heapView.setUint8(byteOffset, this.bufferView.getUint8(this.offset));
