@@ -8,13 +8,13 @@ import { type WLETraceRecorder } from '../WLETraceRecorder.js';
 export function injectAsyncDepthHooks(recorder: WLETraceRecorder, proto: any, name: string) {
     injectMethod(proto, name, {
         beforeHook: (_wasm: WASM, _methodName: string, _args: unknown[]) => {
-            recorder.enterHook();
+            recorder.enterHook(true);
         },
         afterHook: (_wasm: WASM, _methodName: string, _args: unknown[], retVal: Promise<unknown>) => {
-            retVal.finally(() => recorder.leaveHook());
+            retVal.finally(() => recorder.leaveHook(true));
         },
         exceptionHook: (_wasm: WASM, _methodName: string, _args: unknown[], _err: unknown) => {
-            recorder.leaveHook();
+            recorder.leaveHook(true);
         }
     });
 }

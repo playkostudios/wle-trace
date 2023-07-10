@@ -86,6 +86,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
     private _ready: Array<[() => void, (err: unknown) => void]> | boolean = [];
     private allocMap: RecorderAllocationMap;
     private hookDepth = 0;
+    private asyncHookDepth = 0;
     private ignore = false;
 
     stopAndDownloadOnSentinel = false;
@@ -168,12 +169,17 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
         return this.hookDepth > 0;
     }
 
+    get inAsyncHook(): boolean {
+        return this.asyncHookDepth > 0;
+    }
+
     discard(): void {
         if (!this.recording) {
             return;
         }
 
         this.hookDepth = 0;
+        this.asyncHookDepth = 0;
         this.recordBuffer = null;
         this.stringDictionary.length = 0;
         this.callTypeMap.clear();
@@ -578,7 +584,17 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
             // get mapped memory location
             const dmaLen = srcCopyCast.byteLength;
             // console.debug('[wle-trace RECORDER] record dma', dmaLen, '@', offset);
-            const [allocID, relOffset] = this.allocMap.getIDFromRange(offset, offset + dmaLen);
+            const rangeTuple = this.allocMap.maybeGetIDFromRange(offset, offset + dmaLen);
+            if (!rangeTuple) {
+                if (this.inAsyncHook) {
+                    console.warn(`[wle-trace RECORDER] Ignored multi-byte DMA due to invalid memory range in async hook. This may or may not be a bug`);
+                    return;
+                } else {
+                    throw new Error("Allocated memory range not found");
+                }
+            }
+
+            const [allocID, relOffset] = rangeTuple;
 
             // prepare header of dma set
             const headerBuffer = new ArrayBuffer(13);
@@ -608,7 +624,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
 
         try {
             // get allocated offset
-            const absOffset = dst.byteOffset + offset;
+            const absOffset = dst.byteOffset + offset * dst.BYTES_PER_ELEMENT;
             const [allocID, relOffset] = this.allocMap.getID(absOffset);
 
             // generate buffer for header and value
@@ -677,13 +693,21 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
         }
     }
 
-    enterHook() {
+    enterHook(isAsync = false) {
         this.hookDepth++;
+
+        if (isAsync) {
+            this.asyncHookDepth++;
+        }
     }
 
-    leaveHook() {
+    leaveHook(isAsync = false) {
         if (this.hookDepth > 0) {
             this.hookDepth--;
+
+            if (isAsync) {
+                this.asyncHookDepth--;
+            }
         } else if (this.recording) {
             this.discard();
             throw new Error('[wle-trace RECORDER] Negative hook depth; an after/exception hook was not triggered, recording will be discarded');
