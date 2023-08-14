@@ -1,5 +1,6 @@
 import { generate } from 'escodegen';
-import { type ReturnStatement, type FunctionExpression } from 'estree';
+import { type FunctionExpression } from 'estree';
+import { mkReturnStatement } from './factory/mkReturnStatement.js';
 
 export function generateFunction<Params extends readonly unknown[], Ret>(ast: FunctionExpression, extraContext?: Record<string, unknown>) {
     // build extra context
@@ -18,12 +19,7 @@ export function generateFunction<Params extends readonly unknown[], Ret>(ast: Fu
     // by doing "async function(){}.constructor", so instead we make a new
     // regular function that returns the new async function, and we call it once
     // to get the async function
-    const retFuncAST: ReturnStatement = {
-        type: 'ReturnStatement',
-        argument: ast,
-    };
-
-    const genCode = generate(retFuncAST);
+    const genCode = generate(mkReturnStatement(ast));
     const funcFactory = new Function(...extraContextParams, genCode) as (...contextArgs: unknown[]) => ((...args: Params) => Ret);
     return funcFactory(...extraContextArgs);
 }

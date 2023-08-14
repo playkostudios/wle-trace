@@ -3,12 +3,12 @@ import { fetchWithProgress } from '@wonderlandengine/api/utils/fetch.js';
 import { isString } from '@wonderlandengine/api/utils/object.js';
 import { type WLETraceRecorder } from '../WLETraceRecorder.js';
 import { parseFunction } from '../../common/ast-utils/parseFunction.js';
-import { hookIntoSyncFunctionParts } from '../../common/ast-utils/hookIntoSyncFunctionParts.js';
+import { generateSyncHookedFunction } from '../../common/ast-utils/sync-hook/generateSyncHookedFunction.js';
 
 function injectSceneLoad(_recorder: WLETraceRecorder) {
     const ast = parseFunction(Scene.prototype.load);
     console.debug(ast);
-    Scene.prototype.load = hookIntoSyncFunctionParts(
+    Scene.prototype.load = generateSyncHookedFunction(
         ast,
         () => console.debug('start hook'),
         () => console.debug('end hook'),
@@ -21,7 +21,7 @@ function injectSceneLoad(_recorder: WLETraceRecorder) {
 
 function injectSceneAppend(_recorder: WLETraceRecorder) {
     const ast = parseFunction(Scene.prototype.append);
-    Scene.prototype.append = hookIntoSyncFunctionParts(
+    Scene.prototype.append = generateSyncHookedFunction(
         ast,
         () => console.debug('start hook'),
         () => console.debug('end hook'),

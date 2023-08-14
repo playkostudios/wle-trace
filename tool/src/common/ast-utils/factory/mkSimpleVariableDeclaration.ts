@@ -1,16 +1,14 @@
 import { type Expression, type VariableDeclaration } from 'estree';
+import { mkIdentifier } from './mkIdentifier.js';
 
-export function makeVariableDeclaration(name: string, kind: VariableDeclaration['kind'], init?: Expression): VariableDeclaration {
+export function mkSimpleVariableDeclaration(name: string, kind: VariableDeclaration['kind'], init?: Expression): VariableDeclaration {
     return {
         type: 'VariableDeclaration',
         kind,
         declarations: [
             {
                 type: 'VariableDeclarator',
-                id: {
-                    type: 'Identifier',
-                    name,
-                },
+                id: mkIdentifier(name),
                 init,
             },
         ],

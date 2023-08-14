@@ -1,14 +1,12 @@
 import { type ExpressionStatement } from 'estree';
+import { mkIdentifier } from './mkIdentifier.js';
 
-export function makeParamlessFuncCall(name: string): ExpressionStatement {
+export function mkParamlessFuncCall(name: string): ExpressionStatement {
     return {
         type: 'ExpressionStatement',
         expression: {
             type: 'CallExpression',
-            callee: {
-                type: 'Identifier',
-                name,
-            },
+            callee: mkIdentifier(name),
             arguments: [],
             optional: false,
         },
