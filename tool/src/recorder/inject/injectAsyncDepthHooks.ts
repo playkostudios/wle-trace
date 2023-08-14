@@ -1,20 +1,12 @@
-import { type WASM } from '@wonderlandengine/api';
-import { injectMethod } from '../../common/inject/injectMethod.js';
 import { type WLETraceRecorder } from '../WLETraceRecorder.js';
+import { generateSyncHookedFunction } from '../../common/ast-utils/sync-hook/generateSyncHookedFunction.js';
+import { parseFunction } from '../../common/ast-utils/parseFunction.js';
 
-// FIXME this will eventually create issues, because async calls take a long
-//       time to complete, causing inHook to be true (false-positive)
-
-export function injectAsyncDepthHooks(recorder: WLETraceRecorder, proto: any, name: string) {
-    injectMethod(proto, name, {
-        beforeHook: (_wasm: WASM, _methodName: string, _args: unknown[]) => {
-            recorder.enterHook(true);
-        },
-        afterHook: (_wasm: WASM, _methodName: string, _args: unknown[], retVal: Promise<unknown>) => {
-            retVal.finally(() => recorder.leaveHook(true));
-        },
-        exceptionHook: (_wasm: WASM, _methodName: string, _args: unknown[], _err: unknown) => {
-            recorder.leaveHook(true);
-        }
-    });
+export function injectAsyncDepthHooks(recorder: WLETraceRecorder, proto: any, name: string, extraContext?: Record<string, unknown>) {
+    proto[name] = generateSyncHookedFunction(
+        parseFunction(proto[name]),
+        () => recorder.enterHook(),
+        () => recorder.leaveHook(),
+        extraContext,
+    );
 }

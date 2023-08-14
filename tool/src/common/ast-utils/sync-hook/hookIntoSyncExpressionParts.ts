@@ -1,4 +1,4 @@
-import { type Expression } from 'estree';
+import { type ArrowFunctionExpression, type Expression } from 'estree';
 import { type SyncBodyHookASTInjectionContext } from '../../types/SyncBodyHookASTInjectionContext.js';
 import { hookIntoSyncPatternParts } from './hookIntoSyncPatternParts.js';
 import { hookIntoSyncFuncSubBlockParts } from './hookIntoSyncFuncSubBlockParts.js';
@@ -37,6 +37,7 @@ export function hookIntoSyncExpressionParts(expr: Expression, injectionContext: 
                 expr.body = mkBlockStatement([
                     mkReturnStatement(expr.body),
                 ]);
+                (expr as ArrowFunctionExpression).expression = false;
             }
 
             // XXX increment the state counter when hooked so that we can handle

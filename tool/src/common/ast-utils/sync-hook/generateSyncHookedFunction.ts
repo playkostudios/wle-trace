@@ -7,9 +7,6 @@ export function generateSyncHookedFunction<Params extends readonly unknown[], Re
     const [ hookedBlock, injectContext ] = hookIntoSyncTopBlockParts(func.body);
     func.body = hookedBlock;
 
-    // add extra parameters to function
-    func.params;
-
     // generate and curry function
     return generateFunction<Params, Ret>(func, {
         ...extraContext,
