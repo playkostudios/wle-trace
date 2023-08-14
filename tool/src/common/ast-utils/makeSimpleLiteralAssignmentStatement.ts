@@ -1,3 +1,5 @@
+import { type ExpressionStatement, type SimpleLiteral } from 'estree';
+
 export function makeSimpleLiteralAssignmentStatement(name: string, value: SimpleLiteral['value']): ExpressionStatement {
     return {
         type: 'ExpressionStatement',

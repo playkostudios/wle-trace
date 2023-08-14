@@ -1,3 +1,6 @@
+import { type Statement } from 'estree';
+import { expressionHasAwait } from './expressionHasAwait.js';
+
 export function statementHasAwait(stmt: Statement): boolean {
     switch (stmt.type) {
         case 'ExpressionStatement':

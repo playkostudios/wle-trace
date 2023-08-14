@@ -1,3 +1,7 @@
+import { type Expression } from 'estree';
+import { isPattern } from './isPattern.js';
+import { patternHasAwait } from './patternHasAwait.js';
+
 export function expressionHasAwait(expr: Expression): boolean {
     switch (expr.type) {
         case 'ArrayExpression':

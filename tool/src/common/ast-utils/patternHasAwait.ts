@@ -1,3 +1,7 @@
+import { type Pattern } from 'estree';
+import { expressionHasAwait } from './expressionHasAwait.js';
+import { isPattern } from './isPattern.js';
+
 export function patternHasAwait(pattern: Pattern): boolean {
     switch (pattern.type) {
         case 'Identifier':

@@ -1,3 +1,5 @@
+import { type ExpressionStatement } from 'estree';
+
 export function makeParamlessFuncCall(name: string): ExpressionStatement {
     return {
         type: 'ExpressionStatement',

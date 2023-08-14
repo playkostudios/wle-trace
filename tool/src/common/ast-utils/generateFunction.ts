@@ -1,3 +1,6 @@
+import { generate } from 'escodegen';
+import { type ReturnStatement, type FunctionExpression } from 'estree';
+
 export function generateFunction<Params extends readonly unknown[], Ret>(ast: FunctionExpression, extraContext?: Record<string, unknown>) {
     // build extra context
     const extraContextParams = new Array<string>();

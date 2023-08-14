@@ -1,3 +1,6 @@
+import { parseExpressionAt } from 'acorn';
+import { type FunctionExpression } from 'estree';
+
 const asyncStartRegex = /^\s*(async)?\s*/;
 const functionStartRegex = /^\s*(async)?\s*function[\s(*]/;
 
