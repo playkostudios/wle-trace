@@ -10,6 +10,16 @@ import { makeSimpleLiteralAssignmentStatement } from './makeSimpleLiteralAssignm
  * Equivalent to:
  * ```js
  * let __wleTrace_tmp0 = false;
+ * async function __wleTrace_tmp1(x) {
+ *     endHook();
+ *     __wleTrace_tmp0 = false;
+ *     try {
+ *         return await x;
+ *     } finally {
+ *         startHook();
+ *         __wleTrace_tmp0 = true;
+ *     }
+ * }
  * startHook();
  * __wleTrace_tmp0 = true;
  * try {
@@ -54,7 +64,53 @@ export function hookIntoSyncTopBlockParts(block: BlockStatement, injectionContex
             makeVariableDeclaration(injectionContext.hookStateName, 'let', {
                 type: 'Literal',
                 value: false,
-            })
+            }),
+            {
+                type: 'FunctionDeclaration',
+                async: true,
+                id: {
+                    type: 'Identifier',
+                    name: injectionContext.awaitHookName,
+                },
+                params: [
+                    {
+                        type: 'Identifier',
+                        name: 'x',
+                    }
+                ],
+                body: {
+                    type: 'BlockStatement',
+                    body: [
+                        makeParamlessFuncCall(injectionContext.endHookName),
+                        makeSimpleLiteralAssignmentStatement(injectionContext.hookStateName, false),
+                        {
+                            type: 'TryStatement',
+                            block: {
+                                type: 'BlockStatement',
+                                body: [
+                                    {
+                                        type: 'ReturnStatement',
+                                        argument: {
+                                            type: 'AwaitExpression',
+                                            argument: {
+                                                type: 'Identifier',
+                                                name: 'x',
+                                            }
+                                        },
+                                    },
+                                ],
+                            },
+                            finalizer: {
+                                type: 'BlockStatement',
+                                body: [
+                                    makeParamlessFuncCall(injectionContext.startHookName),
+                                    makeSimpleLiteralAssignmentStatement(injectionContext.hookStateName, true),
+                                ],
+                            },
+                        },
+                    ]
+                }
+            }
         );
     }
 
