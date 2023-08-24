@@ -91,16 +91,17 @@ let engine;
 
 // testSentinel();
 // testResourceManagement();
-// testRecord();
-testReplay();
+testRecord();
+// testReplay();
 
 async function normalLoadRuntime() {
     engine = await loadRuntime(Constants.RuntimeBaseName, {...RuntimeOptions, physx: true, threads: false});
-    Object.assign(engine, API); // Deprecated: Backward compatibility.
-    window.WL = engine; // Deprecated: Backward compatibility.
 }
 
 async function normalPostLoad() {
+    Object.assign(engine, API); // Deprecated: Backward compatibility.
+    window.WL = engine; // Deprecated: Backward compatibility.
+
     engine.onSceneLoaded.once(() => {
         const el = document.getElementById('version');
         if (el) setTimeout(() => el.remove(), 2000);

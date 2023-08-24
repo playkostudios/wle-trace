@@ -1,4 +1,4 @@
-import { type TypedArrayCtor, type TypedArray, type WASM } from '@wonderlandengine/api';
+import { type TypedArrayCtor, type TypedArray, type WASM, type loadRuntime as wleLoadRuntime } from '@wonderlandengine/api';
 import { WLETraceSentinelBase } from '../common/WLETraceSentinelBase.js';
 import { type WLETraceEarlyInjector } from '../common/WLETraceEarlyInjector.js';
 import { lateInjectWonderlandEngineRecorder } from './hooks/WonderlandEngine.js';
@@ -90,7 +90,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
 
     stopAndDownloadOnSentinel = false;
 
-    constructor() {
+    constructor(readonly loadRuntime: typeof wleLoadRuntime) {
         super();
 
         this.allocMap = new RecorderAllocationMap(this, expectedFriendKey);
