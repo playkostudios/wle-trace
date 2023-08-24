@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "rootDir": ".",
     "outDir": "dist",
     "target": "es6",
     "module": "es6",
@@ -22,5 +23,5 @@
     "moduleResolution": "nodenext"
   },
   "include": ["src"],
-  "exclude": ["node_modules", "dist", "test-project"]
+  "exclude": ["src/service-worker", "src/standalone-service-worker"]
 }

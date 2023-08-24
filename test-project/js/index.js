@@ -58,14 +58,10 @@ function testResourceManagement() {
     normalLoadRuntime();
 }
 
-function testRecord() {
-    recordWLETrace(wleTypeMaps).then((wleTrace) => {
-        setTimeout(() => wleTrace.stopAndDownload(), 5000);
-
-        normalPostLoad();
-    });
-
-    normalLoadRuntime();
+async function testRecord() {
+    const recorder = await recordWLETrace(wleTypeMaps);
+    engine = await recorder.loadRuntime(...runtimeArgs);
+    normalPostLoad();
 }
 
 async function testReplay() {
@@ -88,6 +84,7 @@ const Constants = {
 /* wle:auto-constants:end */
 
 let engine;
+const runtimeArgs = [Constants.RuntimeBaseName, {...RuntimeOptions, physx: true, threads: false}];
 
 // testSentinel();
 // testResourceManagement();
@@ -95,7 +92,7 @@ testRecord();
 // testReplay();
 
 async function normalLoadRuntime() {
-    engine = await loadRuntime(Constants.RuntimeBaseName, {...RuntimeOptions, physx: true, threads: false});
+    engine = await loadRuntime(...runtimeArgs);
 }
 
 async function normalPostLoad() {

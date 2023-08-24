@@ -21,5 +21,6 @@ export async function recordWLETrace(typeMapJSON?: MethodTypeMapsJSON): Promise<
         recorder.registerTypeMapsFromJSON(typeMapJSON);
     }
 
+    console.debug('!!! done')
     return recorder;
 }

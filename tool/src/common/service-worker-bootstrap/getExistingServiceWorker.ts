@@ -17,7 +17,7 @@ export async function getExistingServiceWorker(normalizedServiceWorkerPath: stri
     }
 
     await waitForServiceWorker(curServiceWorker);
-    let curVersion = await checkIfWorkerIsOurs(timeoutMS);
+    let curVersion = await checkIfWorkerIsOurs(curServiceWorker, timeoutMS);
     if (curVersion === null) {
         throw new Error('There is already a service worker registered, which does not belong to wle-trace. If you need a service worker other than wle-trace, use service worker composition');
     }

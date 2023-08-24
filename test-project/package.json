@@ -6,6 +6,7 @@
   "type": "module",
   "module": "js/index.js",
   "scripts": {
+    "install-sw": "wle-trace-install-standalone-sw",
     "build": "echo \"The 'build' script is run by the editor and should produce your application bundle\""
   },
   "keywords": [

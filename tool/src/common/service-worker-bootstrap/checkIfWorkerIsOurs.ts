@@ -1,6 +1,6 @@
 let nonceIdx = 0;
 
-export function checkIfWorkerIsOurs(timeoutMS: number): Promise<number | null> {
+export function checkIfWorkerIsOurs(serviceWorker: ServiceWorker, timeoutMS: number): Promise<number | null> {
     const navServiceWorker = navigator.serviceWorker;
 
     return new Promise((resolve, _reject) => {
@@ -38,6 +38,10 @@ export function checkIfWorkerIsOurs(timeoutMS: number): Promise<number | null> {
                 resolve(null);
                 cleanup();
             }
+        });
+
+        serviceWorker.postMessage({
+            type: 'wle-trace-get-version',
         });
     })
 }
