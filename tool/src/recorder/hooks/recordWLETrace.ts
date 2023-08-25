@@ -12,7 +12,13 @@ export async function recordWLETrace(typeMapJSON?: MethodTypeMapsJSON): Promise<
         // injectScene(recorder);
         // await injectWASMRecorder(recorder);
         // await recorder.waitForReady();
-        console.debug('injector called!');
+        console.debug('stage 2 injector called!');
+    }, () => {
+        // injectTypedArrayRecorder(recorder);
+        // injectScene(recorder);
+        // await injectWASMRecorder(recorder);
+        // await recorder.waitForReady();
+        console.debug('stage 3 injector called!');
     });
 
     const recorder = new WLETraceRecorder(loadRuntime);
@@ -21,6 +27,5 @@ export async function recordWLETrace(typeMapJSON?: MethodTypeMapsJSON): Promise<
         recorder.registerTypeMapsFromJSON(typeMapJSON);
     }
 
-    console.debug('!!! done')
     return recorder;
 }

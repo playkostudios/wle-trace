@@ -11,10 +11,10 @@ export async function getServiceWorker(options?: ServiceWorkerOptions) {
 
     // create service worker so that we can intercept .wasm files being
     // downloaded, and inject into them in the service worker
-    let serviceWorker = await getExistingServiceWorker(normalizedServiceWorkerPath, scope, timeoutMS);
-    if (!serviceWorker) {
-        serviceWorker = await registerServiceWorker(normalizedServiceWorkerPath, scope, timeoutMS);
+    let messagePort = await getExistingServiceWorker(normalizedServiceWorkerPath, scope, timeoutMS);
+    if (!messagePort) {
+        messagePort = await registerServiceWorker(normalizedServiceWorkerPath, scope, timeoutMS);
     }
 
-    return serviceWorker;
+    return messagePort;
 }

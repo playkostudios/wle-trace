@@ -16,12 +16,16 @@ export async function registerServiceWorker(normalizedServiceWorkerPath: string,
     await waitForServiceWorker(serviceWorker);
 
     // verify that it's a wle-trace service worker
-    const version = await checkIfWorkerIsOurs(serviceWorker, timeoutMS);
-    if (version === null) {
+    const result = await checkIfWorkerIsOurs(serviceWorker, timeoutMS);
+    if (result === null) {
         throw new Error('Registered service worker is not a wle-trace service worker');
-    } else if (version !== SERVICE_WORKER_VERSION) {
+    }
+
+    const [version, messagePort] = result;
+
+    if (version !== SERVICE_WORKER_VERSION) {
         throw new Error('Registered service worker has a mismatched version');
     }
 
-    return serviceWorker;
+    return messagePort;
 }

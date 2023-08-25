@@ -1,14 +1,12 @@
 let nonceIdx = 0;
 
-export function checkIfWorkerIsOurs(serviceWorker: ServiceWorker, timeoutMS: number): Promise<number | null> {
-    const navServiceWorker = navigator.serviceWorker;
-
+export function checkIfWorkerIsOurs(serviceWorker: ServiceWorker, timeoutMS: number): Promise<[version: number, messagePort: MessagePort] | null> {
     return new Promise((resolve, _reject) => {
+        const messageChannel = new MessageChannel();
+        const clientPort = messageChannel.port1;
+
         function cleanup() {
-            if (messageHandler) {
-                navServiceWorker.removeEventListener('message', messageHandler);
-                messageHandler = null;
-            }
+            clientPort.onmessage = null;
 
             if (timeoutID !== null) {
                 clearTimeout(timeoutID);
@@ -21,15 +19,14 @@ export function checkIfWorkerIsOurs(serviceWorker: ServiceWorker, timeoutMS: num
             cleanup();
         }, timeoutMS);
 
-        const nonce = `wle-trace-sw:${nonceIdx++}:${Math.random()}`;
-        let messageHandler: ((ev: MessageEvent<any>) => void) | null = null;
-        navServiceWorker.addEventListener('message', (ev) => {
+        const nonce = `wle-trace-sw:${nonceIdx++}:${(Math.trunc(Math.random() * 0xfffffffffffff)).toString(16).padStart(13)}`;
+        clientPort.onmessage = (ev) => {
             let wasValidResponse = false;
             const msg = ev.data;
-            if (msg !== null && typeof msg === 'object' && msg.type === 'wle-trace-version' && typeof msg.version === 'number') {
+            if (msg !== null && typeof msg === 'object' && msg.type === 'wle-trace-ready' && typeof msg.version === 'number') {
                 wasValidResponse = true;
                 if (msg.nonce === nonce) {
-                    resolve(msg.version);
+                    resolve([msg.version, clientPort]);
                     cleanup();
                 }
             }
@@ -38,10 +35,10 @@ export function checkIfWorkerIsOurs(serviceWorker: ServiceWorker, timeoutMS: num
                 resolve(null);
                 cleanup();
             }
-        });
+        };
 
         serviceWorker.postMessage({
-            type: 'wle-trace-get-version',
-        });
+            type: 'wle-trace-init', nonce,
+        }, [ messageChannel.port2 ]);
     })
 }

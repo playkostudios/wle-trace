@@ -1,6 +1,5 @@
 function handleState(serviceWorker: ServiceWorker, resolve: () => void, reject: (err: unknown) => void): boolean {
     const curState = serviceWorker.state;
-    console.debug('!!!', curState)
     if (curState === 'activated') {
         resolve();
         return true;
