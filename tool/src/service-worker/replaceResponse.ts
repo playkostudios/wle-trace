@@ -20,7 +20,9 @@ export async function replaceResponse(req: Request, injectionID: number) {
     try {
         // downloaded, patch file with stage 1 injector which calls stage 2
         // injector
-        const node = parse(await origResponse.text(), {
+        // XXX need to clone response since body can only be used once, and we
+        //     return the original response when an error occurs
+        const node = parse(await origResponse.clone().text(), {
             ecmaVersion: 'latest', sourceType: 'script', locations: false,
         });
 
