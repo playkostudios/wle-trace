@@ -1,4 +1,4 @@
-import { type Statement, type Program, type FunctionExpression } from 'estree';
+import { type Statement, type Program, type FunctionExpression, MemberExpression, CallExpression } from 'estree';
 import { generate } from 'escodegen';
 import { isWasmInstantiateCall } from './isWasmInstantiateCall.js';
 import { makeStage2Or3InjectorCall } from './makeStage2Or3InjectorCall.js';
@@ -37,7 +37,7 @@ export function patchStage1Injector(program: Program, injectionID: number): stri
 
     // step 2:
     const passedNames = new Set<string>();
-    let wasmInstantiate: [thenFunc: FunctionExpression, idx: number, instanceArgName: string] | null = null;
+    let wasmInstantiate: [thenFunc: FunctionExpression, idx: number, importsArgName: string, instanceArgName: string] | null = null;
     for (let i = 0; i < funcBody.length; i++) {
         const stmt = funcBody[i];
         switch (stmt.type) {
@@ -62,6 +62,16 @@ export function patchStage1Injector(program: Program, injectionID: number): stri
                             throw new Error('Multiple WebAssembly.instantiate calls found');
                         }
 
+                        const instantiateArgs = ((callExpr.callee as MemberExpression).object as CallExpression).arguments;
+                        if (instantiateArgs.length < 2) {
+                            throw new Error('WebAssembly.instantiate call has an unexpected number of arguments');
+                        }
+
+                        if (instantiateArgs[1].type !== 'Identifier') {
+                            throw new Error("WebAssembly.instantiate call's second argument is not an identifier");
+                        }
+
+                        const importsArgName = instantiateArgs[1].name;
                         const callArgs = callExpr.arguments;
                         if (callArgs.length > 0) {
                             const thenArg = callArgs[0];
@@ -73,7 +83,7 @@ export function patchStage1Injector(program: Program, injectionID: number): stri
                                         throw new Error("WebAssembly.instantiate call handler's first argument is not an identifier");
                                     }
 
-                                    wasmInstantiate = [thenArg, i, thenArgParam0.name];
+                                    wasmInstantiate = [thenArg, i, importsArgName, thenArgParam0.name];
                                 } else {
                                     throw new Error('WebAssembly.instantiate call handler does not pass an argument with the WASM instance');
                                 }
@@ -94,8 +104,8 @@ export function patchStage1Injector(program: Program, injectionID: number): stri
     }
 
     // step 3:
-    funcBody.splice(wasmInstantiate[1], 0, makeStage2Or3InjectorCall(null, injectionID, passedNames));
-    wasmInstantiate[0].body.body.splice(0, 0, makeStage2Or3InjectorCall(wasmInstantiate[2], injectionID, passedNames));
+    funcBody.splice(wasmInstantiate[1], 0, makeStage2Or3InjectorCall(false, wasmInstantiate[2], injectionID, passedNames));
+    wasmInstantiate[0].body.body.splice(0, 0, makeStage2Or3InjectorCall(true, wasmInstantiate[3], injectionID, passedNames));
 
     // done, generate code from modified ast
     return generate(program);

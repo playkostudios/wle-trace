@@ -3,8 +3,8 @@ import { type ServiceWorkerOptions } from './types/ServiceWorkerOptions.js';
 import { getServiceWorker } from './service-worker-bootstrap/getServiceWorker.js';
 import { assertServiceWorkerSupported } from './service-worker-bootstrap/assertServiceWorkerSupported.js';
 
-export type PreInjectorCallback = (context: InjectorContext) => void;
-export type PostInjectorCallback = (instance: WebAssembly.WebAssemblyInstantiatedSource, context: InjectorContext) => void;
+export type PreInjectorCallback = (imports: WebAssembly.Imports, context: InjectorContext) => void;
+export type PostInjectorCallback = (instantiatedSource: WebAssembly.WebAssemblyInstantiatedSource, context: InjectorContext) => WebAssembly.WebAssemblyInstantiatedSource | undefined | void;
 type InjectorContext = Record<string, unknown>;
 type PendingMessagePorts = Array<[(sw: MessagePort) => void, (err: unknown) => void]>;
 
@@ -79,15 +79,16 @@ export class WLETraceSWInjector {
             const injectionID = this.nextInjectionID++;
 
             let injectedPre = false;
-            const preInjectorCallbackWrapper = (...args: Parameters<PreInjectorCallback>) => {
-                preInjectorCallback(...args);
+            const preInjectorCallbackWrapper: PreInjectorCallback = (imports, context) => {
+                preInjectorCallback(imports, context);
                 injectedPre = true;
             }
 
             let injectedPost = false;
-            const postInjectorCallbackWrapper = (...args: Parameters<PostInjectorCallback>) => {
-                postInjectorCallback(...args);
+            const postInjectorCallbackWrapper: PostInjectorCallback = (instantiatedSource, context) => {
+                const newOutput = postInjectorCallback(instantiatedSource, context);
                 injectedPost = true;
+                return newOutput;
             }
 
             this.pendingInjectors.set(injectionID, [preInjectorCallbackWrapper, postInjectorCallbackWrapper]);
@@ -120,19 +121,24 @@ export class WLETraceSWInjector {
         }
     }
 
-    doPreInjection(injectionID: number, context: InjectorContext) {
+    doPreInjection(injectionID: number, imports: WebAssembly.Imports, context: InjectorContext) {
         const injectors = this.pendingInjectors.get(injectionID);
         if (injectors) {
-            injectors[0](context);
+            injectors[0](imports, context);
         } else {
             throw new Error('Invalid injection ID');
         }
     }
 
-    doPostInjection(injectionID: number, instance: WebAssembly.WebAssemblyInstantiatedSource, context: InjectorContext) {
+    doPostInjection(injectionID: number, instantiatedSource: WebAssembly.WebAssemblyInstantiatedSource, context: InjectorContext) {
         const injectors = this.pendingInjectors.get(injectionID);
         if (injectors) {
-            injectors[1](instance, context);
+            const newOutput = injectors[1](instantiatedSource, context);
+            if (newOutput) {
+                return newOutput;
+            } else {
+                return instantiatedSource;
+            }
         } else {
             throw new Error('Invalid injection ID');
         }

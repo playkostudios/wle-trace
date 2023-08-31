@@ -3,15 +3,7 @@ import { getPropertyDescriptor } from '../../common/inject/getPropertyDescriptor
 import { injectMethod } from '../../common/inject/injectMethod.js';
 import { type WLETraceRecorder } from '../WLETraceRecorder.js';
 
-export function injectRecorderHooks(recorder: WLETraceRecorder, proto: any, name: string) {
-    const isCall = !name.startsWith('_wljs_');
-    if (isCall) {
-        // only allow _wl_ prefixes, _malloc, _free and stringToUTF8
-        if (name !== '_malloc' && name !== '_free' && name !== 'stringToUTF8' && !name.startsWith('_wl_')) {
-            return;
-        }
-    }
-
+export function injectRecorderHooks(isCall: boolean, recorder: WLETraceRecorder, proto: any, name: string) {
     const descriptor = getPropertyDescriptor(proto, name);
     if (descriptor.value && (typeof descriptor.value) === 'function') {
         injectMethod(proto, name, {
@@ -28,6 +20,5 @@ export function injectRecorderHooks(recorder: WLETraceRecorder, proto: any, name
                 recorder.leaveHook();
             }
         });
-
     }
 }

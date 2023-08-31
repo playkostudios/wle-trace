@@ -1,30 +1,7 @@
-import { type Statement, type Expression, type Property } from 'estree';
+import { type Statement, type Property, type Expression } from 'estree';
 
-export function makeStage2Or3InjectorCall(instanceArgName: null | string, injectionID: number, passedNames: Iterable<string>): Statement {
+export function makeStage2Or3InjectorCall(isStage3: boolean, instanceOrImportsArgName: string, injectionID: number, passedNames: Iterable<string>): Statement {
     const contextProperties: Property[] = [];
-    const callArgs: Expression[] = [
-        {
-            type: 'Literal',
-            value: injectionID,
-        },
-    ];
-
-    if (instanceArgName !== null) {
-        callArgs.push(
-            {
-                type: 'Identifier',
-                name: instanceArgName,
-            },
-        );
-    }
-
-    callArgs.push(
-        {
-            type: 'ObjectExpression',
-            properties: contextProperties,
-        },
-    );
-
     for (const name of passedNames) {
         contextProperties.push({
             type: 'Property',
@@ -41,6 +18,59 @@ export function makeStage2Or3InjectorCall(instanceArgName: null | string, inject
                 name,
             },
         });
+    }
+
+    let statementExpression: Expression = {
+        type: 'CallExpression',
+        optional: false,
+        callee: {
+            type: 'MemberExpression',
+            object: {
+                type: 'MemberExpression',
+                object: {
+                    type: 'Identifier',
+                    name: 'window',
+                },
+                property: {
+                    type: 'Identifier',
+                    name: 'wleTraceSWInjector',
+                },
+                computed: false,
+                optional: false,
+            },
+            property: {
+                type: 'Identifier',
+                name: isStage3 ? 'doPostInjection' : 'doPreInjection',
+            },
+            computed: false,
+            optional: false,
+        },
+        arguments: [
+            {
+                type: 'Literal',
+                value: injectionID,
+            },
+            {
+                type: 'Identifier',
+                name: instanceOrImportsArgName,
+            },
+            {
+                type: 'ObjectExpression',
+                properties: contextProperties,
+            },
+        ],
+    };
+
+    if (isStage3) {
+        statementExpression = {
+            type: 'AssignmentExpression',
+            operator: '=',
+            left: {
+                type: 'Identifier',
+                name: instanceOrImportsArgName,
+            },
+            right: statementExpression,
+        };
     }
 
     return {
@@ -63,33 +93,7 @@ export function makeStage2Or3InjectorCall(instanceArgName: null | string, inject
             body: [
                 {
                     type: 'ExpressionStatement',
-                    expression: {
-                        type: 'CallExpression',
-                        optional: false,
-                        callee: {
-                            type: 'MemberExpression',
-                            object: {
-                                type: 'MemberExpression',
-                                object: {
-                                    type: 'Identifier',
-                                    name: 'window',
-                                },
-                                property: {
-                                    type: 'Identifier',
-                                    name: 'wleTraceSWInjector',
-                                },
-                                computed: false,
-                                optional: false,
-                            },
-                            property: {
-                                type: 'Identifier',
-                                name: instanceArgName !== null ? 'doPostInjection' : 'doPreInjection',
-                            },
-                            computed: false,
-                            optional: false,
-                        },
-                        arguments: callArgs,
-                    },
+                    expression: statementExpression
                 },
             ],
         },
