@@ -3,6 +3,7 @@
 /test-project/.editor/
 /test-project/deploy/
 /test-project/cache/
+/test-project/static/wle-trace-sw.js
 /tool/package-lock.json
 /tool/node_modules/
 /tool/dist/

@@ -1,14 +1,15 @@
 import { type Statement, type Program, type FunctionExpression } from 'estree';
 import { generate } from 'escodegen';
 import { isWasmInstantiateCall } from './isWasmInstantiateCall.js';
+import { makeStage2Or3InjectorCall } from './makeStage2Or3InjectorCall.js';
 
-export function patchStage1Injector(program: Program, _injectionID: number): string {
+export function patchStage1Injector(program: Program, injectionID: number): string {
     // 1. look for `instantiateWonderlandRuntime = ...`, and get RHS's body
     //    (RHS is a function)
     // 2. track all top-level assignments and declarations in body, look for
     //    `WebAssembly.instantiate` call and get the then handler
-    // 3. insert stage 2 injector call before `WebAssembly.instantiate` call
-    // 4. find `ready` call and insert stage 3 injector call at the start
+    // 3. insert stage 2 injector call before `WebAssembly.instantiate` call,
+    //    and stage 3 injector call at top of then handler
 
     // step 1:
     let funcBody: Array<Statement> | null = null;
@@ -36,8 +37,7 @@ export function patchStage1Injector(program: Program, _injectionID: number): str
 
     // step 2:
     const passedNames = new Set<string>();
-    let wasmInstantiateThen: FunctionExpression | null = null;
-    let wasmInstantiateIdx = -1;
+    let wasmInstantiate: [thenFunc: FunctionExpression, idx: number, instanceArgName: string] | null = null;
     for (let i = 0; i < funcBody.length; i++) {
         const stmt = funcBody[i];
         switch (stmt.type) {
@@ -58,7 +58,7 @@ export function patchStage1Injector(program: Program, _injectionID: number): str
                 if (stmt.expression.type === 'CallExpression') {
                     const callExpr = stmt.expression;
                     if (isWasmInstantiateCall(callExpr)) {
-                        if (wasmInstantiateThen) {
+                        if (wasmInstantiate) {
                             throw new Error('Multiple WebAssembly.instantiate calls found');
                         }
 
@@ -66,8 +66,17 @@ export function patchStage1Injector(program: Program, _injectionID: number): str
                         if (callArgs.length > 0) {
                             const thenArg = callArgs[0];
                             if (thenArg.type === 'FunctionExpression') {
-                                wasmInstantiateIdx = i;
-                                wasmInstantiateThen = thenArg;
+                                const thenArgParams = thenArg.params;
+                                if (thenArgParams.length > 0) {
+                                    const thenArgParam0 = thenArgParams[0];
+                                    if (thenArgParam0.type !== 'Identifier') {
+                                        throw new Error("WebAssembly.instantiate call handler's first argument is not an identifier");
+                                    }
+
+                                    wasmInstantiate = [thenArg, i, thenArgParam0.name];
+                                } else {
+                                    throw new Error('WebAssembly.instantiate call handler does not pass an argument with the WASM instance');
+                                }
                             } else {
                                 throw new Error('WebAssembly.instantiate call handler is not a function expression');
                             }
@@ -80,16 +89,13 @@ export function patchStage1Injector(program: Program, _injectionID: number): str
         }
     }
 
-    if (!wasmInstantiateThen) {
+    if (!wasmInstantiate) {
         throw new Error('WebAssembly.instantiate then handler not found');
     }
 
     // step 3:
-    console.debug(wasmInstantiateThen, passedNames)
-    // TODO
-
-    // step 4:
-    // TODO
+    funcBody.splice(wasmInstantiate[1], 0, makeStage2Or3InjectorCall(null, injectionID, passedNames));
+    wasmInstantiate[0].body.body.splice(0, 0, makeStage2Or3InjectorCall(wasmInstantiate[2], injectionID, passedNames));
 
     // done, generate code from modified ast
     return generate(program);
