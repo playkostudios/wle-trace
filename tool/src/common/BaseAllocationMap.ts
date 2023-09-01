@@ -1,4 +1,4 @@
-import { MeshIndexType, type WASM } from '@wonderlandengine/api';
+import { MeshIndexType } from '@wonderlandengine/api';
 import { ValueType } from './types/ValueType.js';
 
 export abstract class BaseAllocationMap {

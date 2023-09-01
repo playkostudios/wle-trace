@@ -466,8 +466,14 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
 
                 this.recordValue(retVal, thisMethodTypeMap[0]);
 
-                // handle (de)allocations if return was successful
-                this.allocMap.handleCallAllocationChanges([retVal, ...args], thisMethodTypeMap);
+                // handle (de)allocations if return was successful. note that,
+                // if this a callback, only the return value is handled, since
+                // the arguments are handled in the enter call
+                if (isCall) {
+                    this.allocMap.handleCallAllocationChanges([retVal, ...args], thisMethodTypeMap);
+                } else {
+                    this.allocMap.handleCallAllocationChanges([retVal], [thisMethodTypeMap[0]]);
+                }
             }
         } catch (err) {
             this.handleError(err, `recording WASM call${isCall ? '' : 'back'} leave`);
@@ -544,6 +550,12 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
                 }
 
                 methodTypeMap.set(methodIdx, thisMethodTypeMap);
+            }
+
+            // handle (de)allocations for arguments if this is a callback (not
+            // for the return value though, that is done in the leave call)
+            if (!isCall) {
+                this.allocMap.handleCallAllocationChanges(args, thisMethodTypeMap.slice(1));
             }
         } catch (err) {
             this.handleError(err, `recording WASM call${isCall ? '' : 'back'} enter`);
@@ -625,71 +637,59 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
         }
 
         try {
-            // get allocated offset
-            const absOffset = dst.byteOffset + offset * dst.BYTES_PER_ELEMENT;
-            const [allocID, relOffset] = this.allocMap.getID(absOffset);
-
-            // generate buffer for header and value
-            const byteCount = dst.BYTES_PER_ELEMENT;
-            const headerSize = 9;
-            const buf = new ArrayBuffer(headerSize + byteCount);
-            const view = new DataView(buf);
-
-            // encode alloc ref
-            this.encodeAllocRef(allocID, relOffset, view, 1);
-
             // encode DMA type and value
+            const byteCount = dst.BYTES_PER_ELEMENT;
+            let sdmaType: EventType;
+            let valBuf: TypedArray;
+
             if (byteCount === 1) {
                 // i8, u8 or clamped u8
                 if (dst instanceof Int8Array) {
-                    view.setUint8(0, EventType.IndexDMAi8);
-                    view.setInt8(headerSize, value);
+                    sdmaType = EventType.IndexDMAi8;
+                    valBuf = new Int8Array([ value ]);
                 } else if (dst instanceof Uint8Array) {
-                    view.setUint8(0, EventType.IndexDMAu8);
-                    view.setUint8(headerSize, value);
+                    sdmaType = EventType.IndexDMAu8;
+                    valBuf = new Uint8Array([ value ]);
                 } else {
-                    view.setUint8(0, EventType.IndexDMAu8);
-                    if (value <= 0) {
-                        view.setUint8(headerSize, 0);
-                    } else if (value >= 255) {
-                        view.setUint8(headerSize, 255);
-                    } else {
-                        view.setUint8(headerSize, Math.round(value));
-                    }
+                    sdmaType = EventType.IndexDMAu8;
+                    valBuf = new Uint8ClampedArray([ value ]);
                 }
             } else if (byteCount === 2) {
                 // i16 or u16
                 if (dst instanceof Int16Array) {
-                    view.setUint8(0, EventType.IndexDMAi16);
-                    view.setInt16(headerSize, value);
+                    sdmaType = EventType.IndexDMAi16;
+                    valBuf = new Int16Array([ value ]);
                 } else {
-                    view.setUint8(0, EventType.IndexDMAu16);
-                    view.setUint16(headerSize, value);
+                    sdmaType = EventType.IndexDMAu16;
+                    valBuf = new Uint16Array([ value ]);
                 }
             } else if (byteCount === 4) {
                 // i32, u32 or f32
                 if (dst instanceof Int32Array) {
-                    view.setUint8(0, EventType.IndexDMAi32);
-                    view.setInt32(headerSize, value);
+                    sdmaType = EventType.IndexDMAi32;
+                    valBuf = new Int32Array([ value ]);
                 } else if (dst instanceof Uint32Array) {
-                    view.setUint8(0, EventType.IndexDMAu32);
-                    view.setUint32(headerSize, value);
+                    sdmaType = EventType.IndexDMAu32;
+                    valBuf = new Uint32Array([ value ]);
                 } else {
-                    view.setUint8(0, EventType.IndexDMAf32);
-                    view.setFloat32(headerSize, value);
+                    sdmaType = EventType.IndexDMAf32;
+                    valBuf = new Float32Array([ value ]);
                 }
             } else if (byteCount === 8) {
                 // f64 or bigint (unsupported)
                 // assume it's f64, since instanceof is expensive
-                view.setUint8(0, EventType.IndexDMAf64);
-                view.setFloat64(headerSize, value);
+                sdmaType = EventType.IndexDMAf64;
+                valBuf = new Float64Array([ value ]);
             } else {
                 // unknown
                 throw new Error('Unknown TypedArray')
             }
 
-            // record buffer
-            this.recordBuffer.push(buf);
+            // generate header and record to buffer
+            this.recordBuffer.push(new Uint8Array([ sdmaType ]));
+            const absOffset = dst.byteOffset + offset * byteCount;
+            this.recordValue(absOffset, ValueType.Pointer);
+            this.recordBuffer.push(valBuf);
         } catch (err) {
             this.handleError(err, 'recording indexed/single-value DMA');
         }
