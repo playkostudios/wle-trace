@@ -5,16 +5,13 @@ import { type WLETraceRecorder } from '../WLETraceRecorder.js';
 export function makeOutOfPlaceRecorderHook(isCall: boolean, recorder: WLETraceRecorder, methodName: string, func: Function) {
     return addHooksToMember(func, methodName, finalizeReplaceableReturnHookOptions({
         beforeHook: (_unusedThis: never, methodName: string, args: any[]) => {
-            recorder.enterHook();
             recorder.recordWASMGenericCallEnter(isCall, methodName, args);
         },
         afterHook: (_unusedThis: never, methodName: string, args: any[], retVal: any) => {
             recorder.recordWASMGenericCallLeave(isCall, methodName, args, false, retVal);
-            recorder.leaveHook();
         },
         exceptionHook: (_unusedThis: never, methodName: string, args: any[], _err: unknown) => {
             recorder.recordWASMGenericCallLeave(isCall, methodName, args, true);
-            recorder.leaveHook();
         }
     }))
 }

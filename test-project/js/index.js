@@ -11,7 +11,7 @@
  *     - `wle:auto-benchmark:start` and `wle:auto-benchmark:end`: Append the benchmarking code
  */
 
-import { injectWLETrace, recordWLETrace, showVisualReplayer } from '@playkostudios/wle-trace';
+import { injectWLETrace, WLETraceRecorder, showVisualReplayer } from '@playkostudios/wle-trace';
 import {loadRuntime} from '@wonderlandengine/api';
 import * as API from '@wonderlandengine/api'; // Deprecated: Backward compatibility.
 import * as wleTypeMaps from '../../type-maps/wle-1.0.4-type-maps.json';
@@ -59,7 +59,7 @@ function testResourceManagement() {
 }
 
 async function testRecord() {
-    const recorder = await recordWLETrace(wleTypeMaps);
+    const recorder = await WLETraceRecorder.create(wleTypeMaps);
     engine = await recorder.loadRuntime(...runtimeArgs);
     normalPostLoad();
 }

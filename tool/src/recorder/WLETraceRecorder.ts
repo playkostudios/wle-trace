@@ -1,7 +1,5 @@
-import { type TypedArrayCtor, type TypedArray, type WASM, type loadRuntime as wleLoadRuntime } from '@wonderlandengine/api';
+import { type TypedArrayCtor, type TypedArray, type loadRuntime as wleLoadRuntime } from '@wonderlandengine/api';
 import { WLETraceSentinelBase } from '../common/WLETraceSentinelBase.js';
-import { type WLETraceEarlyInjector } from '../common/WLETraceEarlyInjector.js';
-import { lateInjectWonderlandEngineRecorder } from './hooks/WonderlandEngine.js';
 import { RecorderAllocationMap } from './RecorderAllocationMap.js';
 import { type MethodTypeMap } from '../common/types/MethodTypeMap.js';
 import { ValueType } from '../common/types/ValueType.js';
@@ -10,8 +8,10 @@ import { type CallTypeJSON } from './types/CallTypeJSON.js';
 import { ValueTypeJSON } from './types/ValueTypeJSON.js';
 import { type MethodTypeMapsJSON } from './types/MethodTypeMapsJSON.js';
 import { EventType } from '../common/types/EventType.js';
-
-// TODO debug rejections caused by inHook being false
+import { getGlobalSWInjector } from '../common/WLETraceSWInjector.js';
+import { injectRecorderHooks } from './inject/injectRecorderHooks.js';
+import { makeOutOfPlaceRecorderHook } from './inject/makeOutOfPlaceRecorderHook.js';
+import { injectTypedArrayRecorder } from './hooks/TypedArray.js';
 
 export const REPLAY_FORMAT_VERSION = 1;
 
@@ -68,32 +68,23 @@ export const REPLAY_FORMAT_VERSION = 1;
 //  idx-dma-(basic TYPE) | [alloc-ref]              | destination
 //                       | [value (basic TYPE)]     | value
 
-// XXX emulate C++ friend classes/methods
-const expectedFriendKey = Symbol('WLETraceRecorder friend key');
-function checkFriendKey(friendKey: symbol) {
-    if (friendKey !== expectedFriendKey) {
-        throw new Error('Caller does not have permission to use this method');
-    }
-}
-
-export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEarlyInjector {
+export class WLETraceRecorder extends WLETraceSentinelBase {
     private callStack = new Array<number>();
     private recordBuffer: null | ArrayBuffer[] = [];
-    private _wasm: WASM | null = null;
+    private _heapBuffer: ArrayBuffer | null = null;
+    private _getVertexCount: ((mesh: number) => number) | null = null;
     private stringDictionary = new Array<string>();
     private callTypeMap: MethodTypeMap = new Map<number, ValueType[]>();
     private callbackTypeMap: MethodTypeMap = new Map<number, ValueType[]>();
     private _ready: Array<[() => void, (err: unknown) => void]> | boolean = [];
     private allocMap: RecorderAllocationMap;
-    private hookDepth = 0;
-    private ignore = false;
 
     stopAndDownloadOnSentinel = false;
 
     constructor(readonly loadRuntime: typeof wleLoadRuntime) {
         super();
 
-        this.allocMap = new RecorderAllocationMap(this, expectedFriendKey);
+        this.allocMap = new RecorderAllocationMap(this);
 
         // -- setup default sentinel handler --
         this.addSentinelHandler(() => {
@@ -101,6 +92,57 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
                 this.stopAndDownload();
             }
         });
+    }
+
+    static async create(typeMapJSON?: MethodTypeMapsJSON) {
+        const swInjector = getGlobalSWInjector();
+        const loadRuntime = await swInjector.makeLoadRuntimeWrapper((imports, _context) => {
+            // TODO remove context param and from stage 1 injection if not used
+            for (const moduleImports of Object.values(imports)) {
+                for (const importName of Object.keys(moduleImports)) {
+                    injectRecorderHooks(false, recorder, moduleImports, importName);
+                }
+            }
+
+        }, (instantiatedSource, _context) => {
+            // TODO remove context param and from stage 1 injection if not used
+            // XXX can't wrap exports in-place because wasm instance objects are
+            //     read-only
+            const newExports: WebAssembly.Exports = {};
+            const origExports = instantiatedSource.instance.exports;
+            for (const [exportName, origExport] of Object.entries(origExports)) {
+                if (origExport instanceof WebAssembly.Global) {
+                    throw new Error('WebAssembly globals are not supported by wle-trace');
+                } else if (origExport instanceof WebAssembly.Memory) {
+                    // TODO
+                    newExports[exportName] = origExport;
+                } else if (origExport instanceof WebAssembly.Table) {
+                    // TODO
+                    newExports[exportName] = origExport;
+                } else {
+                    newExports[exportName] = makeOutOfPlaceRecorderHook(true, recorder, exportName, origExport);
+                }
+            }
+
+            recorder.startRecording(origExports);
+
+            return {
+                instance: {
+                    exports: newExports,
+                },
+                module: instantiatedSource.module,
+            };
+        });
+
+        const recorder = new WLETraceRecorder(loadRuntime);
+
+        if (typeMapJSON) {
+            recorder.registerTypeMapsFromJSON(typeMapJSON);
+        }
+
+        injectTypedArrayRecorder(recorder);
+
+        return recorder;
     }
 
     waitForReady(): Promise<void> {
@@ -115,27 +157,27 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
         });
     }
 
-    // XXX friend method
-    setIgnore(ignore: boolean, friendKey: symbol) {
-        checkFriendKey(friendKey);
-        this.ignore = ignore;
-    }
-
-    private async lateInject() {
-        try {
-            await lateInjectWonderlandEngineRecorder(this);
-        } catch (err) {
-            if (Array.isArray(this._ready)) {
-                for (const [_resolve, reject] of this._ready) {
-                    reject(err);
-                }
-            }
-
-            this._ready = false;
-            return;
+    startRecording(wasmExports?: WebAssembly.Exports) {
+        if (this._heapBuffer) {
+            throw new Error('Already recording');
+        } else if (!this.recordBuffer) {
+            throw new Error('Recording buffer already destroyed; are you reusing a recorder?');
         }
 
-        console.debug('[wle-trace RECORDER] Late init hook called; recorder is ready for user-defined initialization');
+        const heapBuffer = (wasmExports?.memory as WebAssembly.Memory | undefined)?.buffer;
+        if (!heapBuffer) {
+            throw new Error('Could not get WebAssembly memory');
+        }
+
+        const getVertexCount = (wasmExports?.wl_mesh_get_vertexCount as ((mesh: number) => number) | undefined);
+        if (!getVertexCount) {
+            throw new Error('Could not get wl_mesh_get_vertexCount low-level call');
+        }
+
+        this._heapBuffer = heapBuffer;
+        this._getVertexCount = getVertexCount;
+
+        console.debug('[wle-trace RECORDER] Recording started');
 
         if (Array.isArray(this._ready)) {
             for (const [resolve, _reject] of this._ready) {
@@ -146,26 +188,16 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
         this._ready = true;
     }
 
-    get wasm(): WASM | null {
-        return this._wasm;
+    get heapBuffer() {
+        return this._heapBuffer;
     }
 
-    set wasm(wasm: WASM) {
-        if (this._wasm) {
-            throw new Error('WASM instance already set; are you reusing a replayer?');
-        }
-
-        this._wasm = wasm;
-        this.lateInject();
-        console.debug("[wle-trace RECORDER] Early init hook called; started recording. Don't forget to stop recording by calling recorder.stop()");
+    get getVertexCount() {
+        return this._getVertexCount;
     }
 
     get recording(): boolean {
-        return this._wasm !== null && this.recordBuffer !== null;
-    }
-
-    get inHook(): boolean {
-        return this.hookDepth > 0;
+        return this._heapBuffer !== null && this.recordBuffer !== null;
     }
 
     discard(): void {
@@ -173,13 +205,11 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
             return;
         }
 
-        this.hookDepth = 0;
         this.recordBuffer = null;
         this.stringDictionary.length = 0;
         this.callTypeMap.clear();
         this.callbackTypeMap.clear();
         this.allocMap.clear();
-        this.ignore = false;
     }
 
     stop(): Blob {
@@ -401,7 +431,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
     }
 
     recordWASMGenericCallLeave(isCall: boolean, methodName: string, args: any[], threw: boolean, retVal?: unknown) {
-        if (this.ignore || !this.recordBuffer || this._wasm === null) {
+        if (!this.recordBuffer || !this._heapBuffer) {
             return;
         }
 
@@ -445,7 +475,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
     }
 
     recordWASMGenericCallEnter(isCall: boolean, methodName: string, args: any[]) {
-        if (this.ignore || !this.recordBuffer || this._wasm === null) {
+        if (!this.recordBuffer || !this._heapBuffer) {
             return;
         }
 
@@ -521,28 +551,11 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
     }
 
     isHeapBuffer(buffer: ArrayBuffer): boolean {
-        const wasm = this._wasm;
-        if (!wasm) {
-            return false;
-        }
-
-        return buffer === wasm.HEAP8?.buffer ||
-               buffer === wasm.HEAP16?.buffer ||
-               buffer === wasm.HEAP32?.buffer ||
-               buffer === wasm.HEAPU8?.buffer ||
-               buffer === wasm.HEAPU16?.buffer ||
-               buffer === wasm.HEAPU32?.buffer ||
-               buffer === wasm.HEAPF32?.buffer ||
-               buffer === wasm.HEAPF64?.buffer;
+        return !!this._heapBuffer && buffer === this._heapBuffer;
     }
 
     recordWASMDMA(dst: TypedArray, src: ArrayLike<number>, offset: number) {
-        if (this.ignore || !this.recordBuffer || this._wasm === null) {
-            return;
-        }
-
-        // verify that we are in a hook
-        if (!this.inHook) {
+        if (!this.recordBuffer || !this._heapBuffer) {
             return;
         }
 
@@ -602,12 +615,12 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
     }
 
     recordWASMSingleDMA(dst: TypedArray, offset: number, value: number) {
-        if (this.ignore || !this.recordBuffer || this._wasm === null) {
+        if (!this.recordBuffer || !this._heapBuffer) {
             return;
         }
 
-        // verify that we are in a hook and that the destination is the heap
-        if (!this.inHook || !this.isHeapBuffer(dst.buffer)) {
+        // verify that the destination is the heap
+        if (!this.isHeapBuffer(dst.buffer)) {
             return;
         }
 
@@ -679,19 +692,6 @@ export class WLETraceRecorder extends WLETraceSentinelBase implements WLETraceEa
             this.recordBuffer.push(buf);
         } catch (err) {
             this.handleError(err, 'recording indexed/single-value DMA');
-        }
-    }
-
-    enterHook() {
-        this.hookDepth++;
-    }
-
-    leaveHook() {
-        if (this.hookDepth > 0) {
-            this.hookDepth--;
-        } else if (this.recording) {
-            this.discard();
-            throw new Error('[wle-trace RECORDER] Negative hook depth; an after/exception hook was not triggered, recording will be discarded');
         }
     }
 
