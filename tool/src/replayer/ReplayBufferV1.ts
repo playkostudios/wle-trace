@@ -337,17 +337,6 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 val = this.bufferView.getUint8(this.offset) !== 0;
                 this.offset += 1;
                 break;
-            case ValueType.String:
-            {
-                const strIdx = this.bufferView.getUint32(this.offset);
-                val = this.stringDictionary[strIdx];
-                if (val === undefined) {
-                    throw new Error(`Missing string index ${strIdx} for value`);
-                }
-
-                this.offset += 4;
-                break;
-            }
             case ValueType.Void:
                 // XXX nothing
                 break;

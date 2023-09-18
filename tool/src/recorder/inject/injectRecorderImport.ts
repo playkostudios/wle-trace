@@ -3,7 +3,7 @@ import { getPropertyDescriptor } from '../../common/inject/getPropertyDescriptor
 import { injectMethod } from '../../common/inject/injectMethod.js';
 import { type WLETraceRecorder } from '../WLETraceRecorder.js';
 
-export function injectRecorderHooks(isCall: boolean, recorder: WLETraceRecorder, proto: any, name: string) {
+export function injectRecorderImport(isCall: boolean, recorder: WLETraceRecorder, proto: any, name: string) {
     const descriptor = getPropertyDescriptor(proto, name);
     if (descriptor.value && (typeof descriptor.value) === 'function') {
         injectMethod(proto, name, {
@@ -17,5 +17,7 @@ export function injectRecorderHooks(isCall: boolean, recorder: WLETraceRecorder,
                 recorder.recordWASMGenericCallLeave(isCall, methodName, args, true);
             }
         });
+    } else {
+        throw new Error(`Could not inject into WebAssembly import with name "${name}"`);
     }
 }

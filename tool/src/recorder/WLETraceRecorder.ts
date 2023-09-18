@@ -8,7 +8,7 @@ import { ValueTypeJSON } from './types/ValueTypeJSON.js';
 import { type MethodTypeMapsJSON } from './types/MethodTypeMapsJSON.js';
 import { EventType } from '../common/types/EventType.js';
 import { getGlobalSWInjector } from '../common/WLETraceSWInjector.js';
-import { injectRecorderHooks } from './inject/injectRecorderHooks.js';
+import { injectRecorderImport } from './inject/injectRecorderImport.js';
 import { makeOutOfPlaceRecorderHook } from './inject/makeOutOfPlaceRecorderHook.js';
 import { injectTypedArrayRecorder } from './hooks/TypedArray.js';
 
@@ -21,18 +21,7 @@ export const REPLAY_FORMAT_VERSION = 1;
 // ----------------------+--------------------------+---------------------
 //  value (bool)         | 1                        | u8 bool value (0/1)
 // ----------------------+--------------------------+---------------------
-//  value (str)          | 4                        | u32 string index
-// ----------------------+--------------------------+---------------------
 //  value (void)         | 0                        | nothing
-// ----------------------+--------------------------+---------------------
-//  pointer (null)       | 4                        | zeroed 4 bytes
-// ----------------------+--------------------------+---------------------
-//  pointer (non-null)   | [alloc-ref]              | memory location
-// ----------------------+--------------------------+---------------------
-//  alloc-id             | 4                        | u32 alloc ID + 1
-// ----------------------+--------------------------+---------------------
-//  alloc-ref            | [alloc-id]               | alloc ID
-//                       | 4                        | u32 relative offset
 // ----------------------+--------------------------+---------------------
 //  call                 | 4                        | u32 method index
 //                       | [value]?                 | return value
@@ -41,17 +30,16 @@ export const REPLAY_FORMAT_VERSION = 1;
 //  no-ret-call          | 4                        | u32 method index
 //                       | [value]*                 | argument values
 // ----------------------+--------------------------+---------------------
-//  multi-dma            | [alloc-ref]              | destination
+//  multi-dma            | 4                        | destination
 //                       | len                      | buffer
 // ----------------------+--------------------------+---------------------
-//  idx-dma-(basic TYPE) | [alloc-ref]              | destination
+//  idx-dma-(basic TYPE) | 4                        | destination
 //                       | [value (basic TYPE)]     | value
 
 export class WLETraceRecorder extends WLETraceSentinelBase {
     private callStack = new Array<number>();
     private recordBuffer: null | ArrayBuffer[] = [];
     private _heapBuffer: ArrayBuffer | null = null;
-    private _getVertexCount: ((mesh: number) => number) | null = null;
     private stringDictionary = new Array<string>();
     private callTypeMap: MethodTypeMap = new Map<number, ValueType[]>();
     private callbackTypeMap: MethodTypeMap = new Map<number, ValueType[]>();
@@ -76,7 +64,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
             // TODO remove context param and from stage 1 injection if not used
             for (const moduleImports of Object.values(imports)) {
                 for (const importName of Object.keys(moduleImports)) {
-                    injectRecorderHooks(false, recorder, moduleImports, importName);
+                    injectRecorderImport(false, recorder, moduleImports, importName);
                 }
             }
 
@@ -94,6 +82,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
                     newExports[exportName] = origExport;
                 } else if (origExport instanceof WebAssembly.Table) {
                     // TODO
+                    console.debug('!!! TODO table', origExport)
                     newExports[exportName] = origExport;
                 } else {
                     newExports[exportName] = makeOutOfPlaceRecorderHook(true, recorder, exportName, origExport);
@@ -145,13 +134,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
             throw new Error('Could not get WebAssembly memory');
         }
 
-        const getVertexCount = (wasmExports?.wl_mesh_get_vertexCount as ((mesh: number) => number) | undefined);
-        if (!getVertexCount) {
-            throw new Error('Could not get wl_mesh_get_vertexCount low-level call');
-        }
-
         this._heapBuffer = heapBuffer;
-        this._getVertexCount = getVertexCount;
 
         console.debug('[wle-trace RECORDER] Recording started');
 
@@ -162,14 +145,6 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
         }
 
         this._ready = true;
-    }
-
-    get heapBuffer() {
-        return this._heapBuffer;
-    }
-
-    get getVertexCount() {
-        return this._getVertexCount;
     }
 
     get recording(): boolean {
@@ -300,14 +275,6 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
 
             enc = new ArrayBuffer(1);
             new DataView(enc).setUint8(0, val ? 1 : 0);
-        } else if (expectedType === ValueType.String) {
-            if (valType !== 'string') {
-                val = String(val);
-                // console.warn(`[wle-trace RECORDER] casting value to string; string expected`);
-            }
-
-            enc = new ArrayBuffer(4);
-            new DataView(enc).setUint32(0, this.getStringIdx(val as string));
         } else {
             throw new Error('Invalid expected type');
         }
@@ -419,10 +386,6 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
                         thisMethodTypeMap.push(ValueType.Boolean);
                         enc = new ArrayBuffer(1);
                         new DataView(enc).setUint8(0, arg);
-                    } else if (argType === 'string') {
-                        thisMethodTypeMap.push(ValueType.String);
-                        enc = new ArrayBuffer(4);
-                        new DataView(enc).setUint32(0, this.getStringIdx(arg));
                     } else {
                         debugger;
                         throw new Error(`Unexpected argument type in WASM call${isCall ? '' : 'back'}`);
@@ -616,8 +579,6 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
                         argTypes.push(ValueType.Float64);
                     } else if (argDef === ValueTypeJSON.Boolean) {
                         argTypes.push(ValueType.Boolean);
-                    } else if (argDef === ValueTypeJSON.String) {
-                        argTypes.push(ValueType.String);
                     } else {
                         throw new Error(`Invalid argument type "${argDef}"`)
                     }
@@ -638,8 +599,6 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
                     retType = ValueType.Float64;
                 } else if (retDef === ValueTypeJSON.Boolean) {
                     retType = ValueType.Boolean;
-                } else if (retDef === ValueTypeJSON.String) {
-                    retType = ValueType.String;
                 } else {
                     throw new Error(`Invalid return type "${retDef}"`)
                 }

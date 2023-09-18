@@ -301,7 +301,7 @@
         "emscripten_webgl_destroy_context": { "args": ["i32"], "ret": "i32" },
         "emscripten_webgl_enable_extension": { "args": ["i32", "i32"], "ret": "i32" },
         "emscripten_webgl_get_current_context": {  "ret": "i32" },
-        "emscripten_webgl_init_context_attributes": { "ret": "i32" },
+        "emscripten_webgl_init_context_attributes": { "args": ["u32"] },
         "emscripten_webgl_make_context_current": { "args": ["i32"], "ret": "i32" },
         "environ_get": { "args": ["i32", "i32"], "ret": "i32" },
         "environ_sizes_get": { "args": ["u32", "u32"], "ret": "i32" },
@@ -342,6 +342,6 @@
         "wljs_swap": { "args": ["i32", "i32"] },
         "wljs_xr_disable": {  },
         "wljs_xr_session_end": {  },
-        "wljs_xr_session_start": { "args": ["str"] }
+        "wljs_xr_session_start": { "args": ["u32"] }
     }
 }
