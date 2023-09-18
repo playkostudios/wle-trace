@@ -13,28 +13,6 @@ import { injectRecorderHooks } from './inject/injectRecorderHooks.js';
 import { makeOutOfPlaceRecorderHook } from './inject/makeOutOfPlaceRecorderHook.js';
 import { injectTypedArrayRecorder } from './hooks/TypedArray.js';
 
-// FIXME need to rethink how to handle recording:
-// - maybe there should be a "loose" way of mapping memory regions, so that we
-//   can handling mapping regions of an unknown size
-// - some functions should be allowed to pass through, like the gl* functions
-//   - no, this isn't doable for ASM_CONST callbacks, which can also call GL
-//     functions directly (not the wrapper functions)
-//   - maybe we need to record webgl separately. it's the only user-visible
-//     output from the engine that we care about
-// - some memory mapping is not possible without special cases, which is not
-//   sustainable. imagine that for every version that comes out, you have to
-//   redo the memory mapping system with a gazillion special cases
-// - maybe it's better to not do memory mapping at all anymore, now that we're
-//   recording the lowest level calls possible (and therefore the memory
-//   allocations are exactly the same every time). however, this has the
-//   downside that different but very similar versions can't be used to play
-//   back a recording; they have to always allocate the same memory regions,
-//   even though they're doing extra stuff. this problem might not be as bad as
-//   i think, since webassembly separates linear memory (stack + heap) from
-//   code memory, and therefore just having a debug build that has extra code
-//   that does no stack/heap allocations wouldn't change the memory regions that
-//   are allocated at runtime
-
 export const REPLAY_FORMAT_VERSION = 1;
 
 // encodings:
