@@ -4,16 +4,5 @@ export enum ValueTypeJSON {
     Float32 = 'f32',
     Float64 = 'f64',
     Boolean = 'bool',
-    String = 'str',
-    Pointer = 'ptr',
-    MeshAttributeMeshIndex = 'mattr_idx',
-    MeshAttributeStructPointer = 'mattrs_ptr',
-    IndexDataStructPointer = 'idatas_ptr',
-    IndexDataPointer = 'idata_ptr',
-    PointerFree = 'ptr_free',
-    PointerAlloc = 'ptr_new',
-    PointerAllocSize = 'ptr_new_size',
-    PointerAllocEnd = 'ptr_new_end',
-    PointerTemp = 'ptr_temp',
-    PointerPrePrefix = 'ptr_pre_',
+    String = 'str'
 }

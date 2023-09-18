@@ -2,7 +2,6 @@ import { type WASM } from '@wonderlandengine/api';
 import { ReplayBuffer } from './ReplayBuffer.js';
 import { type MethodTypeMap } from '../common/types/MethodTypeMap.js';
 import { ValueType } from '../common/types/ValueType.js';
-import { ReplayV1AllocationMap } from './ReplayV1AllocationMap.js';
 import { EventType } from '../common/types/EventType.js';
 
 export class ReplayBufferV1 implements ReplayBuffer {
@@ -11,7 +10,6 @@ export class ReplayBufferV1 implements ReplayBuffer {
     private stringDictionary = new Array<string>();
     private callTypeMap: MethodTypeMap = new Map<number, ValueType[]>();
     private callbackTypeMap: MethodTypeMap = new Map<number, ValueType[]>();
-    private allocMap: ReplayV1AllocationMap;
     private callStack = new Array<[methodIdx: number, isCall: boolean]>();
     private callbackRetStack = new Array<[threw: boolean, retVal?: unknown]>();
     private looseEndCallbacks = new Array<() => void>();
@@ -22,7 +20,6 @@ export class ReplayBufferV1 implements ReplayBuffer {
 
     constructor(private wasm: WASM, private buffer: ArrayBuffer, private headerSize: number) {
         this.bufferView = new DataView(buffer, headerSize);
-        this.allocMap = new ReplayV1AllocationMap(wasm);
 
         // parse dictionary
         this.stringDictionary.length = 0;
@@ -116,9 +113,6 @@ export class ReplayBufferV1 implements ReplayBuffer {
         if (threw) {
             throw new Error('Fake error; this callback is meant to throw');
         } else {
-            // do memory allocations
-            this.allocMap.handleCallAllocationChanges([retVal, ...args], types);
-
             return retVal;
         }
     }
@@ -132,19 +126,12 @@ export class ReplayBufferV1 implements ReplayBuffer {
     }
 
     private verifyValue(valType: ValueType, val: unknown, expectedVal: unknown, isReturn: boolean) {
-        if (valType === ValueType.Void || valType === ValueType.PointerTemp || valType >= ValueType.PointerPreStart) {
+        if (valType === ValueType.Void) {
             return;
-        } else if (valType === ValueType.IndexDataPointer || valType === ValueType.PointerAlloc || valType === ValueType.PointerAllocEnd) {
-            val = val !== 0;
         }
 
         if (val !== expectedVal) {
-            if (valType === ValueType.Float64) {
-                // FIXME these are caused by delta times being different
-                console.warn(`Unexpected ${isReturn ? 'return' : 'argument'} value with type ${valType}; got ${val}, expected ${expectedVal}, now ${performance.now()}`)
-            } else {
-                throw new Error(`Unexpected ${isReturn ? 'return' : 'argument'} value with type ${valType}; got ${val}, expected ${expectedVal}`);
-            }
+            throw new Error(`Unexpected ${isReturn ? 'return' : 'argument'} value with type ${valType}; got ${val}, expected ${expectedVal}`);
         }
     }
 
@@ -240,10 +227,6 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 } else {
                     throw new Error('Unexpected event type after actual call leave');
                 }
-
-                // do memory allocations
-                // console.debug('! handle call allocs')
-                this.allocMap.handleCallAllocationChanges([retVal, ...args], types);
             } else if (eventType === EventType.Return) {
                 const stackFrame = this.callStack.pop();
                 if (stackFrame === undefined) {
@@ -280,7 +263,8 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 break;
             } else if (eventType === EventType.MultiDMA) {
                 // multi-byte dma
-                const byteOffset = this.decodeAllocRef();
+                const byteOffset = this.bufferView.getUint32(this.offset);
+                this.offset += 4;
                 const byteLength = this.bufferView.getUint32(this.offset);
                 this.offset += 4;
                 // console.debug('replay multi-byte dma', byteLength, 'bytes @', byteOffset, ';end=', byteOffset + byteLength, '; heap8 end=', this.wasm.HEAPU8.byteLength);
@@ -288,7 +272,8 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 this.offset += byteLength;
             } else if (eventType >= EventType.IndexDMAu8 && eventType <= EventType.IndexDMAf64) {
                 // single-value dma
-                const byteOffset = this.decodeAllocRef();
+                const byteOffset = this.bufferView.getUint32(this.offset);
+                this.offset += 4;
                 const heapBuf = this.wasm.HEAP8.buffer;
                 const heapView = new DataView(heapBuf);
                 // console.debug('replay single-value dma @', byteOffset);
@@ -328,26 +313,11 @@ export class ReplayBufferV1 implements ReplayBuffer {
         return this.offset < end;
     }
 
-    private decodeAllocRef(): number {
-        const allocID = this.bufferView.getUint32(this.offset);
-        this.offset += 4;
-
-        if (allocID === 0) {
-            throw new Error('Decoded alloc ref with ID 0');
-        }
-
-        const relOffset = this.bufferView.getUint32(this.offset);
-        this.offset += 4;
-        return this.allocMap.getAbsoluteOffset(allocID - 1, relOffset);
-    }
-
     private decodeValue(type: ValueType): unknown {
         let val;
 
         switch (type) {
             case ValueType.Uint32:
-            case ValueType.MeshAttributeMeshIndex:
-            case ValueType.PointerAllocSize:
                 val = this.bufferView.getUint32(this.offset);
                 this.offset += 4;
                 break;
@@ -364,9 +334,6 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 this.offset += 8;
                 break;
             case ValueType.Boolean:
-            case ValueType.IndexDataPointer:
-            case ValueType.PointerAlloc:
-            case ValueType.PointerAllocEnd:
                 val = this.bufferView.getUint8(this.offset) !== 0;
                 this.offset += 1;
                 break;
@@ -381,42 +348,11 @@ export class ReplayBufferV1 implements ReplayBuffer {
                 this.offset += 4;
                 break;
             }
-            case ValueType.Pointer:
-            case ValueType.IndexDataStructPointer:
-            case ValueType.MeshAttributeStructPointer:
-            {
-                const allocID = this.bufferView.getUint32(this.offset);
-                this.offset += 4;
-
-                if (allocID === 0) {
-                    val = 0;
-                } else {
-                    const relOffset = this.bufferView.getUint32(this.offset);
-                    this.offset += 4;
-                    val = this.allocMap.getAbsoluteOffset(allocID - 1, relOffset);
-                }
-                break;
-            }
-            case ValueType.PointerFree:
-            {
-                const allocID = this.bufferView.getUint32(this.offset);
-                this.offset += 4;
-
-                if (allocID === 0) {
-                    val = null;
-                } else {
-                    val = this.allocMap.getAbsoluteOffset(allocID - 1, 0);
-                }
-                break;
-            }
-            case ValueType.PointerTemp:
             case ValueType.Void:
                 // XXX nothing
                 break;
             default:
-                if (type < ValueType.PointerPreStart) {
-                    throw new Error(`Unknown ValueType: ${type}`);
-                }
+                throw new Error(`Unknown ValueType: ${type}`);
         }
 
         return val;

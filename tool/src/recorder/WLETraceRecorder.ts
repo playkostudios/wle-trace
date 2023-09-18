@@ -1,6 +1,5 @@
 import { type TypedArrayCtor, type TypedArray, type loadRuntime as wleLoadRuntime } from '@wonderlandengine/api';
 import { WLETraceSentinelBase } from '../common/WLETraceSentinelBase.js';
-import { RecorderAllocationMap } from './RecorderAllocationMap.js';
 import { type MethodTypeMap } from '../common/types/MethodTypeMap.js';
 import { ValueType } from '../common/types/ValueType.js';
 import { MAGIC } from '../common/magic.js';
@@ -24,27 +23,7 @@ export const REPLAY_FORMAT_VERSION = 1;
 // ----------------------+--------------------------+---------------------
 //  value (str)          | 4                        | u32 string index
 // ----------------------+--------------------------+---------------------
-//  value (ptr)          | [pointer]                | memory location
-// ----------------------+--------------------------+---------------------
-//  value (mattrs_ptr)   | 1                        | u8, 1 if good alloc
-// ----------------------+--------------------------+---------------------
-//  value (idatas_ptr)   | [pointer]                | memory location
-// ----------------------+--------------------------+---------------------
-//  value (idata_ptr)    | 1                        | u8, 1 if good alloc
-// ----------------------+--------------------------+---------------------
-//  value (ptr_free)     | [alloc-id]               | alloc ID to free
-// ----------------------+--------------------------+---------------------
-//  value (ptr_new)      | 1                        | u8, 1 if good alloc
-// ----------------------+--------------------------+---------------------
-//  value (ptr_new_size) | 4                        | allocation size
-// ----------------------+--------------------------+---------------------
-//  value (ptr_new_end)  | 0                        | nothing
-// ----------------------+--------------------------+---------------------
-//  value (ptr_temp)     | 0                        | nothing
-// ----------------------+--------------------------+---------------------
 //  value (void)         | 0                        | nothing
-// ----------------------+--------------------------+---------------------
-//  value (ptr_pre_*)    | 0                        | nothing
 // ----------------------+--------------------------+---------------------
 //  pointer (null)       | 4                        | zeroed 4 bytes
 // ----------------------+--------------------------+---------------------
@@ -77,14 +56,11 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
     private callTypeMap: MethodTypeMap = new Map<number, ValueType[]>();
     private callbackTypeMap: MethodTypeMap = new Map<number, ValueType[]>();
     private _ready: Array<[() => void, (err: unknown) => void]> | boolean = [];
-    private allocMap: RecorderAllocationMap;
 
     stopAndDownloadOnSentinel = false;
 
     constructor(readonly loadRuntime: typeof wleLoadRuntime) {
         super();
-
-        this.allocMap = new RecorderAllocationMap(this);
 
         // -- setup default sentinel handler --
         this.addSentinelHandler(() => {
@@ -209,7 +185,6 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
         this.stringDictionary.length = 0;
         this.callTypeMap.clear();
         this.callbackTypeMap.clear();
-        this.allocMap.clear();
     }
 
     stop(): Blob {
@@ -281,22 +256,6 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
         return idx;
     }
 
-    private encodeAllocRef(allocID: number, relOffset: number, bufferView?: DataView, offset: number = 0) {
-        let enc, encView;
-
-        if (bufferView) {
-            enc = bufferView.buffer;
-            encView = bufferView;
-        } else {
-            enc = new ArrayBuffer(8);
-            encView = new DataView(enc);
-        }
-
-        encView.setUint32(offset, allocID + 1);
-        encView.setUint32(offset + 4, relOffset);
-        return enc;
-    }
-
     private recordValue(val: unknown, expectedType: ValueType): boolean {
         let enc: ArrayBuffer;
         const valType = typeof val;
@@ -308,7 +267,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
             }
 
             return false;
-        } else if (expectedType === ValueType.Uint32 || expectedType === ValueType.Int32 || expectedType === ValueType.Float32 || expectedType === ValueType.Float64 || expectedType === ValueType.PointerAllocSize || expectedType === ValueType.MeshAttributeMeshIndex) {
+        } else if (expectedType === ValueType.Uint32 || expectedType === ValueType.Int32 || expectedType === ValueType.Float32 || expectedType === ValueType.Float64) {
             if (valType !== 'number') {
                 if (val === undefined || val === null) {
                     val = 0;
@@ -321,7 +280,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
                 // console.warn(`[wle-trace RECORDER] casting value to number; number expected`);
             }
 
-            if (expectedType === ValueType.Uint32 || expectedType === ValueType.PointerAllocSize || expectedType === ValueType.MeshAttributeMeshIndex) {
+            if (expectedType === ValueType.Uint32) {
                 enc = new ArrayBuffer(4);
                 new DataView(enc).setUint32(0, val as number);
             } else if (expectedType === ValueType.Int32) {
@@ -349,74 +308,6 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
 
             enc = new ArrayBuffer(4);
             new DataView(enc).setUint32(0, this.getStringIdx(val as string));
-        } else if (expectedType === ValueType.Pointer || expectedType === ValueType.IndexDataStructPointer || expectedType === ValueType.MeshAttributeStructPointer) {
-            if (valType !== 'number') {
-                if (val === undefined || val === null) {
-                    val = 0;
-                    // console.warn(`[wle-trace RECORDER] casting value to null pointer; pointer expected`);
-                } else {
-                    throw new Error('Impossible cast to pointer');
-                }
-            }
-
-            if (val === 0) {
-                // null pointer, encode in short format
-                enc = new ArrayBuffer(4);
-            } else {
-                // non-null pointer, encode in long format
-                const [allocID, relOffset] = this.allocMap.getID(val as number);
-                enc = this.encodeAllocRef(allocID, relOffset);
-            }
-        } else if (expectedType === ValueType.PointerFree) {
-            if (valType !== 'number') {
-                if (val === undefined || val === null) {
-                    val = 0;
-                    // console.warn(`[wle-trace RECORDER] casting value to null pointer; pointer expected`);
-                } else {
-                    throw new Error('Impossible cast to pointer');
-                }
-            }
-
-            enc = new ArrayBuffer(4);
-            let allocID = 0;
-
-            if (val !== 0) {
-                allocID = this.allocMap.getIDFromStart(val as number) + 1;
-            }
-
-            new DataView(enc).setUint32(0, allocID);
-            handleMemChanges = true;
-        } else if (expectedType === ValueType.PointerAlloc || expectedType === ValueType.PointerAllocEnd) {
-            if (valType !== 'number') {
-                if (val === undefined || val === null) {
-                    val = 0;
-                    // console.warn(`[wle-trace RECORDER] casting value to null pointer; pointer expected`);
-                } else {
-                    throw new Error('Impossible cast to pointer');
-                }
-            }
-
-            // this is a pointer allocation, therefore it doesn't make sense to
-            // store the memory range or pointer address. we just need to store
-            // whether the allocation was valid with a boolean
-            handleMemChanges = val !== 0;
-            enc = new ArrayBuffer(1);
-            new DataView(enc).setUint8(0, handleMemChanges ? 1 : 0);
-        } else if (expectedType === ValueType.PointerTemp || expectedType >= ValueType.PointerPreStart) {
-            // XXX value can be safely ignored; this is a temporary pointer,
-            //     which will not be mapped to anything later on, or a
-            //     pre-allocated pointer, which doesn't need to be stored
-            return expectedType !== ValueType.PointerTemp;
-        } else if (expectedType === ValueType.IndexDataPointer) {
-            enc = new ArrayBuffer(1);
-            const encView = new DataView(enc);
-
-            if (val === null) {
-                encView.setUint8(0, 0);
-            } else {
-                encView.setUint8(0, 1);
-                handleMemChanges = true;
-            }
         } else {
             throw new Error('Invalid expected type');
         }
@@ -430,7 +321,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
         this.discard();
     }
 
-    recordWASMGenericCallLeave(isCall: boolean, methodName: string, args: any[], threw: boolean, retVal?: unknown) {
+    recordWASMGenericCallLeave(isCall: boolean, methodName: string, _args: any[], threw: boolean, retVal?: unknown) {
         if (!this.recordBuffer || !this._heapBuffer) {
             return;
         }
@@ -465,15 +356,6 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
                 }
 
                 this.recordValue(retVal, thisMethodTypeMap[0]);
-
-                // handle (de)allocations if return was successful. note that,
-                // if this a callback, only the return value is handled, since
-                // the arguments are handled in the enter call
-                if (isCall) {
-                    this.allocMap.handleCallAllocationChanges([retVal, ...args], thisMethodTypeMap);
-                } else {
-                    this.allocMap.handleCallAllocationChanges([retVal], [thisMethodTypeMap[0]]);
-                }
             }
         } catch (err) {
             this.handleError(err, `recording WASM call${isCall ? '' : 'back'} leave`);
@@ -551,12 +433,6 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
 
                 methodTypeMap.set(methodIdx, thisMethodTypeMap);
             }
-
-            // handle (de)allocations for arguments if this is a callback (not
-            // for the return value though, that is done in the leave call)
-            if (!isCall) {
-                this.allocMap.handleCallAllocationChanges(args, thisMethodTypeMap.slice(1));
-            }
         } catch (err) {
             this.handleError(err, `recording WASM call${isCall ? '' : 'back'} enter`);
         }
@@ -600,22 +476,12 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
 
             const srcCopyCast = new Uint8Array(srcCopy.buffer, 0, srcCopy.byteLength);
 
-            // get mapped memory location
-            const dmaLen = srcCopyCast.byteLength;
-            // console.debug('[wle-trace RECORDER] record dma', dmaLen, '@', offset);
-            const rangeTuple = this.allocMap.maybeGetIDFromRange(offset, offset + dmaLen);
-            if (!rangeTuple) {
-                throw new Error("Allocated memory range not found");
-            }
-
-            const [allocID, relOffset] = rangeTuple;
-
             // prepare header of dma set
-            const headerBuffer = new ArrayBuffer(13);
+            const headerBuffer = new ArrayBuffer(9);
             const headerBufferView = new DataView(headerBuffer);
             headerBufferView.setUint8(0, EventType.MultiDMA);
-            this.encodeAllocRef(allocID, relOffset, headerBufferView, 1);
-            headerBufferView.setUint32(9, dmaLen);
+            headerBufferView.setUint32(1, offset);
+            headerBufferView.setUint32(5, srcCopyCast.byteLength);
 
             this.recordBuffer.push(headerBuffer);
 
@@ -687,8 +553,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
 
             // generate header and record to buffer
             this.recordBuffer.push(new Uint8Array([ sdmaType ]));
-            const absOffset = dst.byteOffset + offset * byteCount;
-            this.recordValue(absOffset, ValueType.Pointer);
+            this.recordBuffer.push(new Uint32Array([ dst.byteOffset + offset * byteCount ]));
             this.recordBuffer.push(valBuf);
         } catch (err) {
             this.handleError(err, 'recording indexed/single-value DMA');
@@ -753,35 +618,6 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
                         argTypes.push(ValueType.Boolean);
                     } else if (argDef === ValueTypeJSON.String) {
                         argTypes.push(ValueType.String);
-                    } else if (argDef === ValueTypeJSON.Pointer) {
-                        argTypes.push(ValueType.Pointer);
-                    } else if (argDef === ValueTypeJSON.MeshAttributeMeshIndex) {
-                        argTypes.push(ValueType.MeshAttributeMeshIndex);
-                    } else if (argDef === ValueTypeJSON.MeshAttributeStructPointer) {
-                        argTypes.push(ValueType.MeshAttributeStructPointer);
-                    } else if (argDef === ValueTypeJSON.IndexDataStructPointer) {
-                        argTypes.push(ValueType.IndexDataStructPointer);
-                    } else if (argDef === ValueTypeJSON.IndexDataPointer) {
-                        argTypes.push(ValueType.IndexDataPointer);
-                    } else if (argDef === ValueTypeJSON.PointerFree) {
-                        argTypes.push(ValueType.PointerFree);
-                    } else if (argDef === ValueTypeJSON.PointerAlloc) {
-                        argTypes.push(ValueType.PointerAlloc);
-                    } else if (argDef === ValueTypeJSON.PointerAllocSize) {
-                        argTypes.push(ValueType.PointerAllocSize);
-                    } else if (argDef === ValueTypeJSON.PointerAllocEnd) {
-                        argTypes.push(ValueType.PointerAllocEnd);
-                    } else if (argDef === ValueTypeJSON.PointerTemp) {
-                        argTypes.push(ValueType.PointerTemp);
-                    } else if (argDef.startsWith(ValueTypeJSON.PointerPrePrefix)) {
-                        const suffix = argDef.substring(ValueTypeJSON.PointerPrePrefix.length);
-                        const bytes = Number(suffix);
-
-                        if (isNaN(bytes) || !isFinite(bytes) || bytes <= 0 || bytes > 128 || Math.trunc(bytes) !== bytes) {
-                            throw new Error('Invalid pre-allocated pointer byte count');
-                        }
-
-                        argTypes.push(ValueType.PointerPreStart + bytes - 1);
                     } else {
                         throw new Error(`Invalid argument type "${argDef}"`)
                     }
@@ -804,35 +640,6 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
                     retType = ValueType.Boolean;
                 } else if (retDef === ValueTypeJSON.String) {
                     retType = ValueType.String;
-                } else if (retDef === ValueTypeJSON.Pointer) {
-                    retType = ValueType.Pointer;
-                } else if (retDef === ValueTypeJSON.MeshAttributeMeshIndex) {
-                    retType = ValueType.MeshAttributeMeshIndex;
-                } else if (retDef === ValueTypeJSON.MeshAttributeStructPointer) {
-                    retType = ValueType.MeshAttributeStructPointer;
-                } else if (retDef === ValueTypeJSON.IndexDataStructPointer) {
-                    retType = ValueType.IndexDataStructPointer;
-                } else if (retDef === ValueTypeJSON.IndexDataPointer) {
-                    retType = ValueType.IndexDataPointer;
-                } else if (retDef === ValueTypeJSON.PointerFree) {
-                    retType = ValueType.PointerFree;
-                } else if (retDef === ValueTypeJSON.PointerAlloc) {
-                    retType = ValueType.PointerAlloc;
-                } else if (retDef === ValueTypeJSON.PointerAllocSize) {
-                    retType = ValueType.PointerAllocSize;
-                } else if (retDef === ValueTypeJSON.PointerAllocEnd) {
-                    retType = ValueType.PointerAllocEnd;
-                } else if (retDef === ValueTypeJSON.PointerTemp) {
-                    retType = ValueType.PointerTemp;
-                } else if (retDef.startsWith(ValueTypeJSON.PointerPrePrefix)) {
-                    const suffix = retDef.substring(ValueTypeJSON.PointerPrePrefix.length);
-                    const bytes = Number(suffix);
-
-                    if (isNaN(bytes) || !isFinite(bytes) || bytes <= 0 || bytes > 128 || Math.trunc(bytes) !== bytes) {
-                        throw new Error('Invalid pre-allocated pointer byte count');
-                    }
-
-                    retType = ValueType.PointerPreStart + bytes - 1;
                 } else {
                     throw new Error(`Invalid return type "${retDef}"`)
                 }
