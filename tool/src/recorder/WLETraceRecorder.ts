@@ -729,56 +729,62 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
     private registerTypeMapFromJSON(isCallback: boolean, record: Record<string, CallTypeJSON>): void {
         for (const methodName of Object.getOwnPropertyNames(record)) {
             const def = record[methodName];
-            if (typeof def !== 'object' || !Array.isArray(def.args)) {
-                throw new Error(`Invalid type definition for call${isCallback ? 'back' : ''} method "${methodName}"`);
+            if (typeof def !== 'object') {
+                throw new Error(`Invalid type definition for call${isCallback ? 'back' : ''} method "${methodName}"; definition must be an object`);
             }
 
             const argTypes: ValueType[] = [];
             const argDefs = def.args;
-            for (const argDef of argDefs) {
-                if (argDef === ValueTypeJSON.Uint32) {
-                    argTypes.push(ValueType.Uint32);
-                } else if (argDef === ValueTypeJSON.Int32) {
-                    argTypes.push(ValueType.Int32);
-                } else if (argDef === ValueTypeJSON.Float32) {
-                    argTypes.push(ValueType.Float32);
-                } else if (argDef === ValueTypeJSON.Float64) {
-                    argTypes.push(ValueType.Float64);
-                } else if (argDef === ValueTypeJSON.Boolean) {
-                    argTypes.push(ValueType.Boolean);
-                } else if (argDef === ValueTypeJSON.String) {
-                    argTypes.push(ValueType.String);
-                } else if (argDef === ValueTypeJSON.Pointer) {
-                    argTypes.push(ValueType.Pointer);
-                } else if (argDef === ValueTypeJSON.MeshAttributeMeshIndex) {
-                    argTypes.push(ValueType.MeshAttributeMeshIndex);
-                } else if (argDef === ValueTypeJSON.MeshAttributeStructPointer) {
-                    argTypes.push(ValueType.MeshAttributeStructPointer);
-                } else if (argDef === ValueTypeJSON.IndexDataStructPointer) {
-                    argTypes.push(ValueType.IndexDataStructPointer);
-                } else if (argDef === ValueTypeJSON.IndexDataPointer) {
-                    argTypes.push(ValueType.IndexDataPointer);
-                } else if (argDef === ValueTypeJSON.PointerFree) {
-                    argTypes.push(ValueType.PointerFree);
-                } else if (argDef === ValueTypeJSON.PointerAlloc) {
-                    argTypes.push(ValueType.PointerAlloc);
-                } else if (argDef === ValueTypeJSON.PointerAllocSize) {
-                    argTypes.push(ValueType.PointerAllocSize);
-                } else if (argDef === ValueTypeJSON.PointerAllocEnd) {
-                    argTypes.push(ValueType.PointerAllocEnd);
-                } else if (argDef === ValueTypeJSON.PointerTemp) {
-                    argTypes.push(ValueType.PointerTemp);
-                } else if (argDef.startsWith(ValueTypeJSON.PointerPrePrefix)) {
-                    const suffix = argDef.substring(ValueTypeJSON.PointerPrePrefix.length);
-                    const bytes = Number(suffix);
+            if (argDefs) {
+                if (!Array.isArray(def.args)) {
+                    throw new Error(`Invalid type definition for call${isCallback ? 'back' : ''} method "${methodName}"; arguments must be an array or not included`);
+                }
 
-                    if (isNaN(bytes) || !isFinite(bytes) || bytes <= 0 || bytes > 128 || Math.trunc(bytes) !== bytes) {
-                        throw new Error('Invalid pre-allocated pointer byte count');
+                for (const argDef of argDefs) {
+                    if (argDef === ValueTypeJSON.Uint32) {
+                        argTypes.push(ValueType.Uint32);
+                    } else if (argDef === ValueTypeJSON.Int32) {
+                        argTypes.push(ValueType.Int32);
+                    } else if (argDef === ValueTypeJSON.Float32) {
+                        argTypes.push(ValueType.Float32);
+                    } else if (argDef === ValueTypeJSON.Float64) {
+                        argTypes.push(ValueType.Float64);
+                    } else if (argDef === ValueTypeJSON.Boolean) {
+                        argTypes.push(ValueType.Boolean);
+                    } else if (argDef === ValueTypeJSON.String) {
+                        argTypes.push(ValueType.String);
+                    } else if (argDef === ValueTypeJSON.Pointer) {
+                        argTypes.push(ValueType.Pointer);
+                    } else if (argDef === ValueTypeJSON.MeshAttributeMeshIndex) {
+                        argTypes.push(ValueType.MeshAttributeMeshIndex);
+                    } else if (argDef === ValueTypeJSON.MeshAttributeStructPointer) {
+                        argTypes.push(ValueType.MeshAttributeStructPointer);
+                    } else if (argDef === ValueTypeJSON.IndexDataStructPointer) {
+                        argTypes.push(ValueType.IndexDataStructPointer);
+                    } else if (argDef === ValueTypeJSON.IndexDataPointer) {
+                        argTypes.push(ValueType.IndexDataPointer);
+                    } else if (argDef === ValueTypeJSON.PointerFree) {
+                        argTypes.push(ValueType.PointerFree);
+                    } else if (argDef === ValueTypeJSON.PointerAlloc) {
+                        argTypes.push(ValueType.PointerAlloc);
+                    } else if (argDef === ValueTypeJSON.PointerAllocSize) {
+                        argTypes.push(ValueType.PointerAllocSize);
+                    } else if (argDef === ValueTypeJSON.PointerAllocEnd) {
+                        argTypes.push(ValueType.PointerAllocEnd);
+                    } else if (argDef === ValueTypeJSON.PointerTemp) {
+                        argTypes.push(ValueType.PointerTemp);
+                    } else if (argDef.startsWith(ValueTypeJSON.PointerPrePrefix)) {
+                        const suffix = argDef.substring(ValueTypeJSON.PointerPrePrefix.length);
+                        const bytes = Number(suffix);
+
+                        if (isNaN(bytes) || !isFinite(bytes) || bytes <= 0 || bytes > 128 || Math.trunc(bytes) !== bytes) {
+                            throw new Error('Invalid pre-allocated pointer byte count');
+                        }
+
+                        argTypes.push(ValueType.PointerPreStart + bytes - 1);
+                    } else {
+                        throw new Error(`Invalid argument type "${argDef}"`)
                     }
-
-                    argTypes.push(ValueType.PointerPreStart + bytes - 1);
-                } else {
-                    throw new Error(`Invalid argument type "${argDef}"`)
                 }
             }
 
