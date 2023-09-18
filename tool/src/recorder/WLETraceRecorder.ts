@@ -17,6 +17,10 @@ import { injectTypedArrayRecorder } from './hooks/TypedArray.js';
 // - maybe there should be a "loose" way of mapping memory regions, so that we
 //   can handling mapping regions of an unknown size
 // - some functions should be allowed to pass through, like the gl* functions
+//   - no, this isn't doable for ASM_CONST callbacks, which can also call GL
+//     functions directly (not the wrapper functions)
+//   - maybe we need to record webgl separately. it's the only user-visible
+//     output from the engine that we care about
 // - some memory mapping is not possible without special cases, which is not
 //   sustainable. imagine that for every version that comes out, you have to
 //   redo the memory mapping system with a gazillion special cases
