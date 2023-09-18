@@ -1,4 +1,4 @@
-import { type TypedArrayCtor, type TypedArray, type loadRuntime as wleLoadRuntime } from '@wonderlandengine/api';
+import { type TypedArrayCtor, type TypedArray, type loadRuntime as wleLoadRuntime, type WASM } from '@wonderlandengine/api';
 import { WLETraceSentinelBase } from '../common/WLETraceSentinelBase.js';
 import { type MethodTypeMap } from '../common/types/MethodTypeMap.js';
 import { ValueType } from '../common/types/ValueType.js';
@@ -11,6 +11,7 @@ import { getGlobalSWInjector } from '../common/WLETraceSWInjector.js';
 import { injectRecorderImport } from './inject/injectRecorderImport.js';
 import { makeOutOfPlaceRecorderHook } from './inject/makeOutOfPlaceRecorderHook.js';
 import { injectTypedArrayRecorder } from './hooks/TypedArray.js';
+import { injectCanvasInstance } from './hooks/HTMLCanvasElementInstance.js';
 
 export const REPLAY_FORMAT_VERSION = 1;
 
@@ -60,16 +61,20 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
 
     static async create(typeMapJSON?: MethodTypeMapsJSON) {
         const swInjector = getGlobalSWInjector();
-        const loadRuntime = await swInjector.makeLoadRuntimeWrapper((imports, _context) => {
+        const loadRuntime = await swInjector.makeLoadRuntimeWrapper((imports, context) => {
             // TODO remove context param and from stage 1 injection if not used
+            // TODO maybe only keep "Module"
+            // wrap imports
             for (const moduleImports of Object.values(imports)) {
                 for (const importName of Object.keys(moduleImports)) {
                     injectRecorderImport(false, recorder, moduleImports, importName);
                 }
             }
 
+            // wrap canvas
+            injectCanvasInstance(recorder, (context.Module as WASM).canvas);
         }, (instantiatedSource, _context) => {
-            // TODO remove context param and from stage 1 injection if not used
+            // TODO remove context param and from stage 2 injection if not used
             // XXX can't wrap exports in-place because wasm instance objects are
             //     read-only
             const newExports: WebAssembly.Exports = {};
