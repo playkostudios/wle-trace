@@ -571,7 +571,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
                 for (const argDef of argDefs) {
                     if (argDef === ValueTypeJSON.Uint32) {
                         argTypes.push(ValueType.Uint32);
-                    } else if (argDef === ValueTypeJSON.Int32) {
+                    } else if (argDef === ValueTypeJSON.Int32 || argDef === ValueTypeJSON.Int53) {
                         argTypes.push(ValueType.Int32);
                     } else if (argDef === ValueTypeJSON.Float32) {
                         argTypes.push(ValueType.Float32);
@@ -591,7 +591,7 @@ export class WLETraceRecorder extends WLETraceSentinelBase {
             if (retDef) {
                 if (retDef === ValueTypeJSON.Uint32) {
                     retType = ValueType.Uint32;
-                } else if (retDef === ValueTypeJSON.Int32) {
+                } else if (retDef === ValueTypeJSON.Int32 || retDef === ValueTypeJSON.Int53) {
                     retType = ValueType.Int32;
                 } else if (retDef === ValueTypeJSON.Float32) {
                     retType = ValueType.Float32;
