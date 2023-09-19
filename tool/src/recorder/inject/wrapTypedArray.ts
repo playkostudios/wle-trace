@@ -2,6 +2,7 @@ import { type TypedArray } from '@wonderlandengine/api';
 import { type WLETraceRecorder } from '../WLETraceRecorder.js';
 
 const recorderMap = new WeakMap<TypedArray, WLETraceRecorder>();
+export const TYPED_ARRAY_UNWRAP_KEY = Symbol('wle-trace-TypedArray-unwrap');
 
 const typedArrayHandler: ProxyHandler<TypedArray> = {
     set(target, p, newValue) {
@@ -20,6 +21,10 @@ const typedArrayHandler: ProxyHandler<TypedArray> = {
         return true;
     },
     get(target, p) {
+        if (p === TYPED_ARRAY_UNWRAP_KEY) {
+            return target;
+        }
+
         const val = Reflect.get(target, p);
 
         if (typeof val === 'function') {
