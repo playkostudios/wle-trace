@@ -9,7 +9,7 @@ function getContextWrapper(this: HTMLCanvasElement, recorder: WLETraceRecorder, 
         if (contextId === 'webgl') {
             throw new Error('WebGL1 wrapper not implemented yet'); // TODO
         } else if (contextId === 'webgl2') {
-            return WebGL2RenderingContextWrapper.create(recorder, retVal);
+            return new WebGL2RenderingContextWrapper(recorder, retVal);
         }
     }
 
