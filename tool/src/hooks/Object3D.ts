@@ -100,9 +100,15 @@ injectMethod(Object3D.prototype, 'addComponent', {
     },
 });
 
+// special case for engine getter, since it's always valid to access
+injectAccessor(Object3D.prototype, 'engine', {
+    traceHook: controller.guardFunction('trace:get:Object3D.engine', traceObjectProperty),
+}, null);
+
 // auto-inject trivial Object3D properties
-// HACK objectId is not handled because it's used internally in the WLE API
-const PROPERTY_DENY_LIST = new Set([ 'constructor', 'destroy', 'addComponent', 'objectId', 'isDestroyed' ]);
+// some properties are not handled because they're used internally in the WLE
+// API, or are special
+const PROPERTY_DENY_LIST = new Set([ 'constructor', 'destroy', 'addComponent', 'objectId', 'isDestroyed', 'engine' ]);
 
 for (const name of Object.getOwnPropertyNames(Object3D.prototype)) {
     if (PROPERTY_DENY_LIST.has(name)) {
