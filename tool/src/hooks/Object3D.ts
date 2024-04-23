@@ -102,7 +102,7 @@ injectMethod(Object3D.prototype, 'addComponent', {
 
 // auto-inject trivial Object3D properties
 // HACK objectId is not handled because it's used internally in the WLE API
-const PROPERTY_DENY_LIST = new Set([ 'constructor', 'destroy', 'addComponent', 'objectId' ]);
+const PROPERTY_DENY_LIST = new Set([ 'constructor', 'destroy', 'addComponent', 'objectId', 'isDestroyed' ]);
 
 for (const name of Object.getOwnPropertyNames(Object3D.prototype)) {
     if (PROPERTY_DENY_LIST.has(name)) {
