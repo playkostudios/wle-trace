@@ -1,4 +1,4 @@
-import { Object3D, Scene } from '@wonderlandengine/api';
+import { type InstantiateResult, Prefab, Scene } from '@wonderlandengine/api';
 import { injectMethod } from '../inject/injectMethod.js';
 import { guardReclaimObject3D, guardReclaimObject3DRecursively } from '../utils/guardReclaim.js';
 import { type TracedObject3D } from '../types/TracedObject3D.js';
@@ -6,62 +6,47 @@ import { makeGlobalObjMethodTracer } from '../utils/trace.js';
 import { controller } from '../WLETraceController.js';
 import { sceneDestroyCheck, trackedDestroyMark } from '../utils/objectDestroy.js';
 
-const sceneMethodTracer = makeGlobalObjMethodTracer('Scene');
+const sceneMethodTracer = makeGlobalObjMethodTracer('Prefab');
 
-injectMethod(Scene.prototype, 'addObject', {
-    traceHook: controller.guardFunction('trace:Scene.addObject', sceneMethodTracer),
-    afterHook: (_scene: Scene, _methodName: string, _args: any[], newObj: TracedObject3D) => {
+// TODO move these (prefab.prototype)
+injectMethod(Prefab.prototype, 'addObject', {
+    traceHook: controller.guardFunction('trace:Prefab.addObject', sceneMethodTracer),
+    afterHook: (_prefab: Prefab, _methodName: string, _args: any[], newObj: TracedObject3D) => {
         guardReclaimObject3D(newObj);
     }
 });
 
-injectMethod(Scene.prototype, 'addObjects', {
-    traceHook: controller.guardFunction('trace:Scene.addObjects', sceneMethodTracer),
-    afterHook: (_scene: Scene, _methodName: string, _args: any[], newObjs: TracedObject3D[]) => {
+injectMethod(Prefab.prototype, 'addObjects', {
+    traceHook: controller.guardFunction('trace:Prefab.addObjects', sceneMethodTracer),
+    afterHook: (_prefab: Prefab, _methodName: string, _args: any[], newObjs: TracedObject3D[]) => {
         for (const newObj of newObjs) {
             guardReclaimObject3D(newObj);
         }
     }
 });
 
-// XXX for scene reset tracking logic, check _wl_load_scene_bin hook, as well as
-//     _wljs_component_init; there is no clean way to know when the objects are
-//     added but not initialized in scene.load
-injectMethod(Scene.prototype, 'load', {
-    traceHook: controller.guardFunction('trace:Scene.load', sceneMethodTracer),
-});
-
-injectMethod(Scene.prototype, 'append', {
-    traceHook: controller.guardFunction('trace:Scene.append', sceneMethodTracer),
-    afterHook: (_scene: Scene, _methodName: string, _args: any[], resultPromise: Promise<TracedObject3D | null | { root: TracedObject3D }>) => {
-        return new Promise((resolve, reject) => {
-            resultPromise.then((result) => {
-                try {
-                    if (result !== null) {
-                        if (result instanceof Object3D) {
-                            guardReclaimObject3DRecursively(result as TracedObject3D);
-                        } else {
-                            guardReclaimObject3DRecursively((result as { root: TracedObject3D }).root);
-                        }
-                    }
-                } catch(err) {
-                    console.error('[wle-trace] unhandled exception in reclaim logic of Scene.append after hook:', err);
-                }
-
-                resolve(result);
-            }).catch(reject);
-        });
+injectMethod(Prefab.prototype, '_initialize', {
+    traceHook: controller.guardFunction('trace:Prefab._initialize', sceneMethodTracer),
+    afterHook: (prefab: Prefab, _methodName: string, _args: any[]) => {
+        for (const child of prefab.getChildren()) {
+            guardReclaimObject3DRecursively(child as unknown as TracedObject3D);
+        }
     },
-    safeHooks: false,
-    afterHookReplacesReturn: true,
 });
 
-injectMethod(Scene.prototype, 'reset', {
+injectMethod(Scene.prototype, 'instantiate', {
+    traceHook: controller.guardFunction('trace:Scene.instantiate', sceneMethodTracer),
+    afterHook: (_scene: Scene, _methodName: string, _args: any[], result: InstantiateResult) => {
+        guardReclaimObject3DRecursively(result.root as unknown as TracedObject3D);
+    },
+});
+
+injectMethod(Scene.prototype, 'destroy', {
     beforeHook: (scene: Scene, _methodName: string, _args: any[]) => {
         sceneDestroyCheck(scene.engine);
     },
     afterHook: (scene: Scene, _methodName: string, _args: any[]) => {
-        trackedDestroyMark(scene.engine, 'Scene.load');
+        trackedDestroyMark(scene.engine, 'Scene.destroy');
     },
-    traceHook: controller.guardFunction('trace:Scene.reset', sceneMethodTracer),
+    traceHook: controller.guardFunction('trace:Scene.destroy', sceneMethodTracer),
 });

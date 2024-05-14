@@ -1,5 +1,5 @@
-import { Mesh, type ComponentConstructor, type WonderlandEngine, Texture, MaterialParamType, Material, TextComponent } from '@wonderlandengine/api';
-import { ERR, STR, StyledMessage, WARN } from '../StyledMessage.js';
+import { Mesh, type ComponentConstructor, type WonderlandEngine, Texture, Material, TextComponent } from '@wonderlandengine/api';
+import { STR, StyledMessage, WARN } from '../StyledMessage.js';
 import { controller } from '../WLETraceController.js';
 import { origChildrenGetter, origGetComponentsMethod } from '../hooks/orig-properties.js';
 import { type TracedComponent } from '../types/TracedComponent.js';
@@ -10,7 +10,6 @@ import { trackedMeshes } from './trackedMeshes.js';
 import { trackedObject3Ds } from './trackedObject3Ds.js';
 import { trackedComponents } from './trackedComponents.js';
 import { trackedTextures } from './trackedTextures.js';
-import { getMaterialDefinition } from './getMaterialDefinition.js';
 import { trackedMaterials } from './trackedMaterials.js';
 import { type TracedTexture } from '../types/TracedTexture.js';
 
@@ -123,7 +122,7 @@ export function guardReclaimObject3D(obj: TracedObject3D) {
         new StyledMessage()
             .add('Object3D at path ', WARN)
             .addSubMessage(prevPath)
-            .add(` (ID ${obj._objectId}) was reclaimed while it was being destroyed`)
+            .add(` (ID ${obj._id}) was reclaimed while it was being destroyed`)
             .print(true, WARN);
 
         delete obj.__wle_trace_destroying_data;
@@ -132,14 +131,14 @@ export function guardReclaimObject3D(obj: TracedObject3D) {
     if (prevPath) {
         if (controller.isEnabled('trace:reclaim:Object3D')) {
             StyledMessage.fromObject3D(obj)
-                .add(` (ID ${obj._objectId}) was reclaimed from a previously destroyed object at `)
+                .add(` (ID ${obj._id}) was reclaimed from a previously destroyed object at `)
                 .addSubMessage(prevPath)
                 .print(true);
         }
 
         if (controller.isEnabled('guard:bad-reclaim:Object3D')) {
             const nativeProperties = [
-                '_engine', '_objectId'
+                '_engine', '_id'
             ];
 
             const unexpectedProperties = [];
@@ -151,7 +150,7 @@ export function guardReclaimObject3D(obj: TracedObject3D) {
 
             if (unexpectedProperties.length > 0) {
                 const message = StyledMessage.fromObject3D(obj)
-                    .add(` (ID ${obj._objectId}) was badly reclaimed from a previously destroyed object at `)
+                    .add(` (ID ${obj._id}) was badly reclaimed from a previously destroyed object at `)
                     .addSubMessage(prevPath)
                     .add(`; the following old ${unexpectedProperties.length > 1 ? 'properties were' : 'property was'} still present: `);
 
@@ -176,82 +175,86 @@ export function guardReclaimObject3D(obj: TracedObject3D) {
         new StyledMessage()
             .add('creating Object3D ')
             .addSubMessage(StyledMessage.fromObject3D(obj))
-            .add(` (ID ${obj._objectId})`)
+            .add(` (ID ${obj._id})`)
             .print(true);
     }
 
     triggerBreakpoint('construction:Object3D');
 }
 
+export function guardReclaimComponentAndResources(comp: TracedComponent, obj: TracedObject3D) {
+    // XXX make sure to reclaim the component __before__ reclaiming the
+    //     component properties, otherwise there is a false-positive for
+    //     use-after-destroy
+    guardReclaimComponent(comp);
+
+    // XXX try to mark properties in loaded component as new if never seen
+    //     before
+    const ctor = comp.constructor as ComponentConstructor;
+    // XXX ctor.Properties might be missing if the component has no
+    //     properties; the array is either explicitly defined, or auto-added
+    //     when needed by the @property decorators
+    if (ctor.Properties) {
+        // XXX some native getters can crash (and this might have
+        //     side-effects), so we handle native components in a
+        //     case-by-case basis
+        switch ((comp as any).type) {
+            case 'collision':
+            case 'view':
+            case 'input':
+            case 'light':
+            case 'animation':
+            case 'physx':
+                // this native component is not special, no need to check
+                // anything
+                break;
+            case 'text':
+            {
+                const material = (comp as TextComponent).material;
+                if (material) {
+                    guardReclaimMaterial(obj._engine, material)
+                }
+                break;
+            }
+            case 'mesh':
+            {
+                // TODO check skin
+                const mesh = (comp as any).mesh;
+                if (mesh) {
+                    guardReclaimMesh(obj._engine, mesh);
+                }
+
+                const material: Material | null = (comp as any).material;
+                if (material) {
+                    guardReclaimMaterial(obj._engine, material);
+                }
+                break;
+            }
+            default:
+                // js component or new native component with no special case
+                // (which could be no-bueno, as it might crash)
+                for (const propertyName of Object.getOwnPropertyNames(ctor.Properties)) {
+                    const propertyValue = (comp as unknown as Record<string, unknown>)[propertyName];
+
+                    if (propertyValue !== undefined && propertyValue !== null && typeof propertyValue === 'object') {
+                        if (propertyValue instanceof Mesh) {
+                            guardReclaimMesh(comp.engine, propertyValue);
+                        } else if (propertyValue instanceof Texture) {
+                            guardReclaimTexture(comp.engine, propertyValue);
+                        } else if (propertyValue instanceof Material) {
+                            guardReclaimMaterial(comp.engine, propertyValue);
+                        }
+                    }
+                }
+        }
+    }
+}
+
 export function guardReclaimObject3DRecursively(obj: TracedObject3D) {
     guardReclaimObject3D(obj);
 
     for (const comp of origGetComponentsMethod.apply(obj)) {
-        // XXX make sure to reclaim the component __before__ reclaiming the
-        //     component properties, otherwise there is a false-positive for
-        //     use-after-destroy
-        guardReclaimComponent(comp);
-
-        // XXX try to mark properties in loaded component as new if never seen
-        //     before
-        const ctor = comp.constructor as ComponentConstructor;
-        // XXX ctor.Properties might be missing if the component has no
-        //     properties; the array is either explicitly defined, or auto-added
-        //     when needed by the @property decorators
-        if (ctor.Properties) {
-            // XXX some native getters can crash (and this might have
-            //     side-effects), so we handle native components in a
-            //     case-by-case basis
-            switch (comp.type) {
-                case 'collision':
-                case 'view':
-                case 'input':
-                case 'light':
-                case 'animation':
-                case 'physx':
-                    // this native component is not special, no need to check
-                    // anything
-                    break;
-                case 'text':
-                {
-                    const material = (comp as TextComponent).material;
-                    if (material) {
-                        guardReclaimMaterial(obj._engine, material)
-                    }
-                    break;
-                }
-                case 'mesh':
-                {
-                    // TODO check skin
-                    const mesh = comp.mesh;
-                    if (mesh) {
-                        guardReclaimMesh(obj._engine, mesh);
-                    }
-
-                    const material: Material | null = comp.material;
-                    if (material) {
-                        guardReclaimMaterial(obj._engine, material);
-                    }
-                    break;
-                }
-                default:
-                    // js component or new native component with no special case
-                    // (which could be no-bueno, as it might crash)
-                    for (const propertyName of Object.getOwnPropertyNames(ctor.Properties)) {
-                        const propertyValue = (comp as unknown as Record<string, unknown>)[propertyName];
-
-                        if (propertyValue !== undefined && propertyValue !== null && typeof propertyValue === 'object') {
-                            if (propertyValue instanceof Mesh) {
-                                guardReclaimMesh(comp.engine, propertyValue);
-                            } else if (propertyValue instanceof Texture) {
-                                guardReclaimTexture(comp.engine, propertyValue);
-                            } else if (propertyValue instanceof Material) {
-                                guardReclaimMaterial(comp.engine, propertyValue);
-                            }
-                        }
-                    }
-            }
-        }
+        guardReclaimComponentAndResources(comp, obj);
     }
 
     for (const child of origChildrenGetter.apply(obj)) {
@@ -360,31 +363,14 @@ export function guardReclaimMaterial(engine: WonderlandEngine, material: Materia
         }
     }
 
-    const matDefMap = getMaterialDefinition(material);
-    if (matDefMap) {
-        for (const [key, def] of matDefMap) {
-            const propType = def.type.type;
-            if (propType === MaterialParamType.Sampler) {
-                // this is a texture id, reclaim it
-                const texture = (material as unknown as Record<string | symbol, Texture | null>)[key];
-                if (texture) {
-                    guardReclaimTexture(engine, texture);
-                }
-            }
-        }
+    for (const key of material.engine.materials.getTemplate(material.pipeline).Parameters) {
+        const value = (material as unknown as Record<string, unknown>)[key];
+        if (value instanceof Texture) guardReclaimTexture(engine, value);
     }
 }
 
 export function guardReclaimScene(engine: WonderlandEngine) {
-    const sceneRoot = engine.wrapObject(0);
-    const children = origChildrenGetter.apply(sceneRoot);
-    const components = origGetComponentsMethod.apply(sceneRoot);
-
-    for (const comp of components) {
-        guardReclaimComponent(comp);
-    }
-
-    for (const child of children) {
-        guardReclaimObject3DRecursively(child);
+    for (const child of engine.scene.getChildren()) {
+        guardReclaimObject3DRecursively(child as unknown as TracedObject3D);
     }
 }

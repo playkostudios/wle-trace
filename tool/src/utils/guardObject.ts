@@ -16,7 +16,7 @@ export function guardObject(obj: TracedObject3D, strict: boolean, originFactory:
     if (controller.isEnabled('debug:ghost:Object3D')) {
         if (!trackedObject3Ds.has(obj._engine, obj)) {
             new StyledMessage()
-                .add(`ghost Object3D (ID ${obj._objectId}) detected in guard`)
+                .add(`ghost Object3D (ID ${obj._id}) detected in guard`)
                 .print(true, ERR);
 
             debugger;
@@ -24,7 +24,7 @@ export function guardObject(obj: TracedObject3D, strict: boolean, originFactory:
         }
     }
 
-    if (obj._objectId === -1 || obj.__wle_trace_destroyed_data || obj.__wle_trace_destroying_data) {
+    if (obj._id === -1 || obj.__wle_trace_destroyed_data || obj.__wle_trace_destroying_data) {
         let path, destroyTrace;
         if (obj.__wle_trace_destroying_data) {
             strict = false;
@@ -43,9 +43,9 @@ export function guardObject(obj: TracedObject3D, strict: boolean, originFactory:
         }
 
         // XXX Scene.load and Scene.reset will NOT result in Object3D.destroy
-        //     being called, so we can't rely on _objectId being -1 to detect an
+        //     being called, so we can't rely on _id being -1 to detect an
         //     unexpected destroy
-        // if (obj._objectId !== -1) {
+        // if (obj._id !== -1) {
         //     new StyledMessage()
         //         .add('unexpected reclaim; was destroyed object ')
         //         .addSubMessage(path)

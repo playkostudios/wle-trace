@@ -1,6 +1,6 @@
-import { type WASM, WonderlandEngine, Material } from '@wonderlandengine/api';
+import { type WASM, WonderlandEngine, Material, MaterialManager } from '@wonderlandengine/api';
 import { injectMethod } from '../inject/injectMethod.js';
-import { guardReclaimMaterial, guardReclaimMesh, guardReclaimScene, guardReclaimTexture } from '../utils/guardReclaim.js';
+import { guardReclaimComponentAndResources, guardReclaimMaterial, guardReclaimMesh, guardReclaimScene, guardReclaimTexture } from '../utils/guardReclaim.js';
 import { controller } from '../WLETraceController.js';
 import { getPropertyDescriptor } from '../inject/getPropertyDescriptor.js';
 import { wasmMethodTracer } from '../utils/wasmMethodTracer.js';
@@ -9,9 +9,30 @@ import { sceneDestroyCheck } from '../utils/objectDestroy.js';
 import { inSceneLoad } from '../utils/inSceneLoad.js';
 import { ERR, StyledMessage } from '../StyledMessage.js';
 import { handleScenePostReplace } from '../utils/handleScenePostReplace.js';
+import { TracedComponent } from '../types/TracedComponent.js';
+import { TracedObject3D } from '../types/TracedObject3D.js';
 
 controller.registerFeature('trace:emitter:WonderlandEngine.onSceneLoaded');
 controller.registerFeature('debug:dummy-material-ctor-crash');
+
+export const wasmToEngine = new WeakMap<WASM, WonderlandEngine>();
+
+injectMethod(WonderlandEngine.prototype, 'loadMainSceneFromBuffer', {
+    beforeHook: (engine: WonderlandEngine, _methodName: string, _args: any[]) => {
+        // XXX destroy only resources. objects and components are only destroyed
+        //     in Scene.destroy
+        // TODO destroy textures, etc...
+        engine;
+    },
+});
+
+// TODO move this
+injectMethod(MaterialManager.prototype, '_wrapInstance', {
+    traceHook: controller.guardFunction('trace:MaterialManager._wrapInstance', wasmMethodTracer),
+    beforeHook: (mgr: MaterialManager, _methodName: string, args: any[]) => {
+        guardReclaimMaterial(mgr.engine, args[0]);
+    }
+});
 
 // XXX _wl_ methods (not _wljs_) are only added after loadRuntime is called. to
 //     hook them we have to hook into an init function AND THEN inject to those
@@ -23,6 +44,7 @@ injectMethod(WonderlandEngine.prototype, '_init', {
         });
 
         const wasm = engine.wasm;
+        wasmToEngine.set(wasm, engine);
 
         injectMethod(wasm, '_wl_mesh_create', {
             traceHook: controller.guardFunction('trace:WASM._wl_mesh_create', wasmMethodTracer),
@@ -31,90 +53,23 @@ injectMethod(WonderlandEngine.prototype, '_init', {
             }
         });
 
-        injectMethod(wasm, '_wl_renderer_addImage', {
-            traceHook: controller.guardFunction('trace:WASM._wl_renderer_addImage', wasmMethodTracer),
+        injectMethod(wasm, '_wl_texture_create', {
+            traceHook: controller.guardFunction('trace:WASM._wl_texture_create', wasmMethodTracer),
             afterHook: (_wasm: WASM, _methodName: string, _args: any[], textureId: number) => {
                 guardReclaimTexture(engine, textureId);
             }
         });
 
-        injectMethod(wasm, '_wl_load_scene_bin', {
-            beforeHook: (wasm: WASM, _methodName: string, _args: any[]) => {
-                sceneDestroyCheck(engine);
-
-                if (inSceneLoad.has(wasm)) {
-                    new StyledMessage()
-                        .add('Scene load started while another scene is being loaded. wle-trace will not be able to accurately track which Object3D/Component instances were added. This might also be a bug on your end')
-                        .print(true, ERR);
-                } else {
-                    inSceneLoad.set(wasm, [false, engine]);
-                }
-            },
-            traceHook: controller.guardFunction('trace:WASM._wl_load_scene_bin', wasmMethodTracer),
-            afterHook: (wasm: WASM, _methodName: string, _args: any[]) => {
-                const hadInitEngine = inSceneLoad.get(wasm);
-                inSceneLoad.delete(wasm);
-
-                if (!hadInitEngine) {
-                    if (controller.isEnabled('debug:bad-scene-load-tracking')) {
-                        new StyledMessage()
-                            .add('bad Scene.load tracking detected')
-                            .print(true, ERR);
-
-                        debugger;
-                    }
-
-                    return;
-                }
-
-                if (!hadInitEngine[0]) {
-                    handleScenePostReplace(engine, 'Scene.load');
-                }
-            },
-            exceptionHook: (wasm: WASM, _methodName: string, _args: any[], _error: unknown) => {
-                inSceneLoad.delete(wasm);
-            },
-        });
-
-        const materialCreateCloneAfterHook = (_wasm: WASM, _methodName: string, _args: any[], materialIdx: number) => {
-            if (materialIdx >= 0) {
-                // HACK we end up creating 2 Material instances, which is
-                //      not ideal, but there is no clean way; it would
-                //      require overriding the constructor, which has nasty
-                //      side-effects. this will also create an unnecessary
-                //      trace for the WASM material definitions getter call
-                let material = null;
-                try {
-                    material = new Material(engine, materialIdx);
-                } catch (err) {
-                    if (controller.isEnabled('debug:dummy-material-ctor-crash')) {
-                        console.error(err);
-                        new StyledMessage()
-                            .add('dummy material creation failed')
-                            .print(true, ERR);
-
-                        debugger;
-                    }
-                }
-
-                if (material) {
-                    guardReclaimMaterial(engine, material);
-                }
+        injectMethod(wasm, '_wl_object_add_component', {
+            traceHook: controller.guardFunction('trace:WASM._wl_object_add_component', wasmMethodTracer),
+            afterHook: (_wasm: WASM, _methodName: string, args: any[], componentId: number) => {
+                const obj = engine.wrapObject(args[0]);
+                guardReclaimComponentAndResources(obj.scene._components.wrapAny(args[1], componentId) as TracedComponent, obj as unknown as TracedObject3D);
             }
-        };
-
-        injectMethod(wasm, '_wl_material_create', {
-            traceHook: controller.guardFunction('trace:WASM._wl_material_create', wasmMethodTracer),
-            afterHook: materialCreateCloneAfterHook
-        });
-
-        injectMethod(wasm, '_wl_material_clone', {
-            traceHook: controller.guardFunction('trace:WASM._wl_material_clone', wasmMethodTracer),
-            afterHook: materialCreateCloneAfterHook
         });
 
         // auto-inject trivial internal calls
-        const PROPERTY_DENY_LIST = new Set([ '_wl_mesh_create', '_wl_renderer_addImage', '_wl_load_scene_bin', '_wl_material_create', '_wl_material_clone' ]);
+        const PROPERTY_DENY_LIST = new Set([ '_wl_mesh_create', '_wl_texture_create', '_wl_material_create', '_wl_material_clone', '_wl_object_add_component' ]);
 
         for (const name of Object.getOwnPropertyNames(wasm)) {
             if (PROPERTY_DENY_LIST.has(name)) {

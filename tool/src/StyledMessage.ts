@@ -1,4 +1,4 @@
-import { Component, Material, Mesh, Object3D, Texture, type WonderlandEngine } from '@wonderlandengine/api';
+import { Component, Material, Mesh, Object3D, Texture } from '@wonderlandengine/api';
 import { origChildrenGetter, origGetComponentsMethod, origNameGetter, origParentGetter, origObjectGetter, origTypeGetter } from './hooks/orig-properties.js';
 import { controller } from './WLETraceController.js';
 import { type TracedObject3D } from './types/TracedObject3D.js';
@@ -25,17 +25,6 @@ const LOG_LEVEL_TAGS = [
     ' ERR',
 ];
 
-const rootObjs = new WeakMap();
-function getRootObj(engine: WonderlandEngine) {
-    let rootObj = rootObjs.get(engine);
-    if (!rootObj) {
-        rootObj = engine.wrapObject(0);
-        rootObjs.set(engine, rootObj);
-    }
-
-    return rootObj;
-}
-
 function isFunction(funcOrClass: Function) {
     const propertyNames = Object.getOwnPropertyNames(funcOrClass);
     return (!propertyNames.includes('prototype') || propertyNames.includes('arguments'));
@@ -51,14 +40,14 @@ export class StyledMessage {
         const message = new StyledMessage();
 
         // XXX special case for root object
-        const objId = obj._objectId;
+        const objId = obj._id;
         if (objId === 0) {
             return message.add('<root>', WARN);
         }
 
         // XXX special case if fast-objects is enabled
         if (controller.isEnabled('fast-objects')) {
-            if (obj._objectId === -1) {
+            if (obj._id === -1) {
                 return message.add(`<destroyed object>`, ERR);
             } else {
                 return message.add(`<object ${objId}>`, NONE);
@@ -89,7 +78,7 @@ export class StyledMessage {
                 break;
             }
 
-            if (obj._objectId === -1) {
+            if (obj._id === -1) {
                 message.unshift('<destroyed object; destruction could not be detected>', ERR);
                 break;
             }
@@ -129,7 +118,7 @@ export class StyledMessage {
                 if (parent) {
                     children = origChildrenGetter.apply(parent);
                 } else {
-                    children = origChildrenGetter.apply(getRootObj(obj._engine));
+                    children = obj._engine.scene.getChildren();
                 }
 
                 let idx = -1;
@@ -207,7 +196,7 @@ export class StyledMessage {
             const compType = origTypeGetter.apply(component);
             message.add(compType, STR);
 
-            if (obj && obj._objectId !== -1) {
+            if (obj && obj._id !== -1) {
                 const compList = origGetComponentsMethod.apply(obj, [compType]);
                 const idx = compList.indexOf(component);
                 if (idx > 0) {

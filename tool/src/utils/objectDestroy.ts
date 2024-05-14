@@ -32,7 +32,7 @@ export function deepDestroyCheck(object: TracedObject3D) {
             .print(true, ERR);
 
         triggerGuardBreakpoint(true);
-    } else if (object._objectId === -1) {
+    } else if (object._id === -1) {
         new StyledMessage()
             .add('double-destroy detected in unexpected destroyed object')
             .print(true, ERR);
@@ -45,7 +45,7 @@ export function deepDestroyCheck(object: TracedObject3D) {
             new StyledMessage()
                 .add('destroying Object3D ')
                 .addSubMessage(path)
-                .add(` (ID ${object._objectId})`)
+                .add(` (ID ${object._id})`)
                 .print(true);
         }
 
@@ -99,16 +99,8 @@ export function deepDestroyMark(object: TracedObject3D) {
 
 export function sceneDestroyCheck(engine: WonderlandEngine) {
     // mark everything in scene as being destroyed
-    const sceneRoot = engine.wrapObject(0);
-    const children = origChildrenGetter.apply(sceneRoot);
-    const components = origGetComponentsMethod.apply(sceneRoot);
-
-    for (const comp of components) {
-        componentDestroyCheck(comp);
-    }
-
-    for (const child of children) {
-        deepDestroyCheck(child);
+    for (const child of engine.scene.getChildren()) {
+        deepDestroyCheck(child as unknown as TracedObject3D);
     }
 }
 
