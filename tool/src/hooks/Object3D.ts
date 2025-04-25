@@ -5,7 +5,7 @@ import { injectAccessor } from '../inject/injectAccessor.js';
 import { injectMethod } from '../inject/injectMethod.js';
 import { guardObjectMethod } from '../utils/guardMethod.js';
 import { strictGuardObject } from '../utils/guardObject.js';
-import { guardReclaimComponent } from '../utils/guardReclaim.js';
+import { guardReclaimComponent, guardReclaimObject3DRecursively } from '../utils/guardReclaim.js';
 import { guardObjectSetter } from '../utils/guardSetter.js';
 import { traceObjectMethod, traceObjectProperty, traceObjectSet } from '../utils/trace.js';
 import { type TracedObject3D } from '../types/TracedObject3D.js';
@@ -100,6 +100,14 @@ injectMethod(Object3D.prototype, 'addComponent', {
     },
 });
 
+// track object clone
+injectMethod(Object3D.prototype, 'clone', {
+    traceHook: controller.guardFunction('trace:Object3D.clone', traceObjectMethod),
+    afterHook: (_obj: TracedObject3D, _methodName: string, _args: any[], newObj: TracedObject3D) => {
+        guardReclaimObject3DRecursively(newObj);
+    },
+});
+
 // special case for engine getter, since it's always valid to access
 injectAccessor(Object3D.prototype, 'engine', {
     traceHook: controller.guardFunction('trace:get:Object3D.engine', traceObjectProperty),
@@ -108,7 +116,7 @@ injectAccessor(Object3D.prototype, 'engine', {
 // auto-inject trivial Object3D properties
 // some properties are not handled because they're used internally in the WLE
 // API, or are special
-const PROPERTY_DENY_LIST = new Set([ 'constructor', 'destroy', 'addComponent', 'objectId', 'isDestroyed', 'engine' ]);
+const PROPERTY_DENY_LIST = new Set([ 'constructor', 'destroy', 'addComponent', 'objectId', 'isDestroyed', 'engine', 'clone' ]);
 
 for (const name of Object.getOwnPropertyNames(Object3D.prototype)) {
     if (PROPERTY_DENY_LIST.has(name)) {
