@@ -34,7 +34,7 @@ export class StatefulTracker<K, V> {
         return this.engines.get(engine) ?? [];
     }
 
-    clear() {
-        this.engines.clear();
+    clear(engine: WonderlandEngine) {
+        this.engines.delete(engine);
     }
 }

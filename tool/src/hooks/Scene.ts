@@ -1,10 +1,12 @@
-import { Object3D, Scene } from '@wonderlandengine/api';
+import { Object3D, Scene, type ViewComponent } from '@wonderlandengine/api';
 import { injectMethod } from '../inject/injectMethod.js';
-import { guardReclaimObject3D, guardReclaimObject3DRecursively } from '../utils/guardReclaim.js';
+import { guardReclaimComponent, guardReclaimObject3D, guardReclaimObject3DRecursively } from '../utils/guardReclaim.js';
 import { type TracedObject3D } from '../types/TracedObject3D.js';
 import { makeGlobalObjMethodTracer } from '../utils/trace.js';
 import { controller } from '../WLETraceController.js';
 import { sceneDestroyCheck, trackedDestroyMark } from '../utils/objectDestroy.js';
+import { injectAccessor } from '../inject/injectAccessor.js';
+import { TracedComponent } from '../types/TracedComponent.js';
 
 const sceneMethodTracer = makeGlobalObjMethodTracer('Scene');
 
@@ -64,4 +66,12 @@ injectMethod(Scene.prototype, 'reset', {
         trackedDestroyMark(scene.engine, 'Scene.load');
     },
     traceHook: controller.guardFunction('trace:Scene.reset', sceneMethodTracer),
+});
+
+injectAccessor(Scene.prototype, 'activeViews', {
+    afterHook: (_scene: Scene, _accessorName: string, _args: any[], views: TracedComponent[]) => {
+        for (const view of views) {
+            guardReclaimComponent(view);
+        }
+    },
 });

@@ -1,6 +1,6 @@
 {
   "name": "@playkostudios/wle-trace",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Debugging tool for Wonderland Engine",
   "main": "dist/index.js",
   "exports": "./dist/index.js",

@@ -376,15 +376,5 @@ export function guardReclaimMaterial(engine: WonderlandEngine, material: Materia
 }
 
 export function guardReclaimScene(engine: WonderlandEngine) {
-    const sceneRoot = engine.wrapObject(0);
-    const children = origChildrenGetter.apply(sceneRoot);
-    const components = origGetComponentsMethod.apply(sceneRoot);
-
-    for (const comp of components) {
-        guardReclaimComponent(comp);
-    }
-
-    for (const child of children) {
-        guardReclaimObject3DRecursively(child);
-    }
+    guardReclaimObject3DRecursively(engine.wrapObject(0) as unknown as TracedObject3D);
 }

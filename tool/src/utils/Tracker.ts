@@ -25,7 +25,7 @@ export class Tracker<T> {
         return this.engines.get(engine) ?? new Set();
     }
 
-    clear() {
-        this.engines.clear();
+    clear(engine: WonderlandEngine) {
+        this.engines.delete(engine);
     }
 }
