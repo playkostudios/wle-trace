@@ -24,4 +24,8 @@ export class Tracker<T> {
     getAll(engine: WonderlandEngine): Set<T> {
         return this.engines.get(engine) ?? new Set();
     }
+
+    clear() {
+        this.engines.clear();
+    }
 }

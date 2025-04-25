@@ -33,4 +33,8 @@ export class StatefulTracker<K, V> {
     getAll(engine: WonderlandEngine): Iterable<[K, V]> {
         return this.engines.get(engine) ?? [];
     }
+
+    clear() {
+        this.engines.clear();
+    }
 }

@@ -9,6 +9,9 @@ import { controller } from '../WLETraceController.js';
 import { trackedObject3Ds } from './trackedObject3Ds.js';
 import { trackedComponents } from './trackedComponents.js';
 import { type WonderlandEngine } from '@wonderlandengine/api';
+import { trackedMeshes } from './trackedMeshes.js';
+import { trackedMaterials } from './trackedMaterials.js';
+import { trackedTextures } from './trackedTextures.js';
 
 controller.registerFeature('trace:destruction:Object3D');
 
@@ -110,6 +113,12 @@ export function sceneDestroyCheck(engine: WonderlandEngine) {
     for (const child of children) {
         deepDestroyCheck(child);
     }
+
+    trackedComponents.clear();
+    trackedMaterials.clear();
+    trackedMeshes.clear();
+    trackedTextures.clear();
+    trackedObject3Ds.clear();
 }
 
 export function trackedDestroyMark(engine: WonderlandEngine, origin: string) {
